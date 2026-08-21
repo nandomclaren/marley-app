@@ -8,25 +8,32 @@ recente "ganha".
 
 ## Setup
 
-Este repositório foi escrito à mão (sem o Flutter SDK disponível no
-ambiente onde foi criado), então as pastas de plataforma (`android/`,
-`ios/`, etc.) **ainda não existem**. Antes de rodar:
-
 ```bash
-flutter create . --project-name marley --org com.marley
 flutter pub get
-```
-
-Isso gera as pastas de plataforma sem tocar em `lib/` nem `pubspec.yaml`
-(ele detecta o projeto existente e só preenche o que falta). Depois disso:
-
-```bash
 flutter run
 ```
 
-Rode `flutter analyze` e `flutter test` em seguida — o código não foi
-compilado/testado localmente ainda (sem SDK no ambiente de criação), então
-vale a pena revisar o output com atenção na primeira vez.
+As pastas de plataforma (`android/`, `ios/`) já estão no repositório
+(geradas com `flutter create . --project-name marley --org com.marley` e
+com `test/widget_test.dart` substituído por um smoke test real do app).
+
+Validado com Flutter 3.47.1 / Dart 3.13.1: `flutter analyze` sem
+apontamentos e `flutter test` passando (cálculos financeiros + um fluxo de
+interação de ponta a ponta — adicionar transação, trocar de aba, abrir
+detalhe de categoria). Duas coisas que só apareceram rodando de verdade,
+não no `analyze` estático, e que já foram corrigidas:
+
+- `AppState.selectedMonth` começava como string vazia até `init()`
+  terminar, e qualquer tela que formatasse o mês (`monthLabel`) explodia
+  nesse instante entre o primeiro frame e o carregamento do storage.
+- As mutações chamavam `notifyListeners()` só depois do `await` na escrita
+  em disco (`shared_preferences`); se essa escrita demorasse ou falhasse, a
+  UI ficava sem saber que os dados já tinham mudado. Agora `notifyListeners()`
+  roda antes da escrita (update otimista) e falha de disco não derruba nada.
+
+Não fiz build de APK/IPA de verdade (sem Android SDK/Xcode no ambiente onde
+isso foi escrito) — vale rodar `flutter build apk` ou `flutter build ios`
+localmente antes de distribuir.
 
 ## Sincronização (Gist)
 
