@@ -72,7 +72,11 @@ class Txn {
       desc: j['desc'] as String? ?? '',
       acct: j['acct'] as String? ?? '—',
       out: ((j['out'] as num?) ?? 0).toDouble(),
-      in_: ((j['in'] as num?) ?? 0).toDouble(),
+      // The web app's field is literally named `in_` (with the trailing
+      // underscore) in its own JS objects — `in` is a reserved word there,
+      // so that's what actually gets serialized to the Gist. Do not
+      // "clean this up" to 'in': that would desync from the real data.
+      in_: ((j['in_'] as num?) ?? 0).toDouble(),
       notes: j['notes'] as String? ?? '',
       style: j['style'] as String? ?? 'normal',
       recurring: j['recurring'] as bool? ?? false,
@@ -90,7 +94,7 @@ class Txn {
       'desc': desc,
       'acct': acct,
       'out': out,
-      'in': in_,
+      'in_': in_,
       'notes': notes,
       'style': style,
       'recurring': recurring,
