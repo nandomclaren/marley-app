@@ -2,10 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../data/categories.dart';
-import '../models/app_data.dart';
 import '../state/app_state.dart';
+import '../utils/calculations.dart';
 import '../utils/formatters.dart';
 import '../widgets/add_edit_transaction_sheet.dart';
+import '../widgets/reconcile_sheet.dart';
 import '../widgets/sync_button.dart';
 import '../widgets/transaction_tile.dart';
 
@@ -20,19 +21,6 @@ class _ContasScreenState extends State<ContasScreen> {
   String _acct = kAccounts.first;
   bool _showFuture = true;
 
-  double _openingBalance(Balances b, String acct) {
-    switch (acct) {
-      case 'Revolut':
-        return b.rev;
-      case 'Wise':
-        return b.wise;
-      case 'Swile':
-        return b.swile;
-      default:
-        return 0;
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final appState = context.watch<AppState>();
@@ -46,7 +34,7 @@ class _ContasScreenState extends State<ContasScreen> {
         return a.id.compareTo(b.id);
       });
 
-    var running = _openingBalance(data.balances, _acct);
+    var running = Calculations.openingBalanceForAccount(data.balances, _acct);
     final balanceAfter = <int, double>{};
     for (final t in acctTxns) {
       if (t.style != 'opening') running += t.net;
@@ -59,7 +47,7 @@ class _ContasScreenState extends State<ContasScreen> {
     }
     final displayList = visible.reversed.toList();
     final currentBalance = acctTxns.isEmpty
-        ? _openingBalance(data.balances, _acct)
+        ? Calculations.openingBalanceForAccount(data.balances, _acct)
         : balanceAfter[acctTxns.last.id]!;
 
     return Scaffold(
@@ -121,9 +109,10 @@ class _ContasScreenState extends State<ContasScreen> {
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () => AddEditTransactionSheet.show(context),
-        child: const Icon(Icons.add),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () => ReconcileSheet.show(context, acct: _acct),
+        icon: const Icon(Icons.balance),
+        label: const Text('Reconciliar'),
       ),
     );
   }

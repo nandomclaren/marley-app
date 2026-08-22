@@ -63,3 +63,11 @@ String lastDayOfMonth(String yyyymm) {
 }
 
 String monthOf(String iso) => iso.substring(0, 7);
+
+final RegExp _leadingSymbols = RegExp(r'^[^\p{L}\p{N}]+', unicode: true);
+
+/// Strips any leading emoji/symbols (e.g. the category glyph some
+/// descriptions are prefixed with) and lowercases, for description
+/// matching/autocomplete. Matches the web app's `bareDesc`.
+String bareDesc(String s) =>
+    s.replaceFirst(_leadingSymbols, '').toLowerCase().trim();

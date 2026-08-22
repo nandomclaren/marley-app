@@ -299,6 +299,41 @@ class Calculations {
   }
 
   // ---------------------------------------------------------------------
+  // Accounts / reconcile
+  // ---------------------------------------------------------------------
+
+  static double openingBalanceForAccount(Balances b, String acct) {
+    switch (acct) {
+      case 'Revolut':
+        return b.rev;
+      case 'Wise':
+        return b.wise;
+      case 'Swile':
+        return b.swile;
+      default:
+        return 0;
+    }
+  }
+
+  /// The "cleared balance" shown at the start of a reconcile flow: opening
+  /// balance for [acct] plus every cleared-or-locked transaction on it up
+  /// to [asOf] (today), excluding 'opening' rows. Matches the web app's
+  /// `openRecModal()` exactly.
+  static double clearedBalanceForAccount(AppData data, String acct,
+      {String? asOf}) {
+    final cutoff = asOf ?? todayIso();
+    final start = openingBalanceForAccount(data.balances, acct);
+    final sum = data.txns
+        .where((t) =>
+            t.acct == acct &&
+            t.style != 'opening' &&
+            (t.cleared || t.locked) &&
+            t.date.compareTo(cutoff) <= 0)
+        .fold(0.0, (a, t) => a + t.net);
+    return start + sum;
+  }
+
+  // ---------------------------------------------------------------------
   // Age of Money (FIFO)
   // ---------------------------------------------------------------------
 

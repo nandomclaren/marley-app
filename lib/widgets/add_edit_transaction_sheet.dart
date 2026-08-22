@@ -32,8 +32,14 @@ class _AddEditTransactionSheetState extends State<AddEditTransactionSheet> {
   late TextEditingController _descController;
   late TextEditingController _amountController;
   late TextEditingController _notesController;
+  final FocusNode _descFocus = FocusNode();
   String _acct = kAccounts.first;
-  String _cat = kAllCategories.first;
+  String _cat = '';
+  // Tracks the category *we* last auto-filled, so a manual pick that
+  // differs from it is never silently overwritten. Mirrors the web app's
+  // `lastAutoCat`.
+  String? _lastAutoCat;
+  List<Txn> _descSuggestions = const [];
   _Direction _direction = _Direction.out;
   bool _recurring = false;
   bool _uncertain = false;
@@ -48,7 +54,7 @@ class _AddEditTransactionSheetState extends State<AddEditTransactionSheet> {
     _descController = TextEditingController(text: t?.desc ?? '');
     _notesController = TextEditingController(text: t?.notes ?? '');
     _acct = t?.acct ?? kAccounts.first;
-    _cat = t != null && t.cat.isNotEmpty ? t.cat : kAllCategories.first;
+    _cat = t?.cat ?? '';
     _recurring = t?.recurring ?? false;
     _uncertain = t?.warning ?? false;
     if (t != null) {
@@ -59,14 +65,86 @@ class _AddEditTransactionSheetState extends State<AddEditTransactionSheet> {
     } else {
       _amountController = TextEditingController();
     }
+    _descController.addListener(_onDescChanged);
+    _descFocus.addListener(() {
+      if (!_descFocus.hasFocus) setState(() => _descSuggestions = const []);
+    });
   }
 
   @override
   void dispose() {
+    _descController.removeListener(_onDescChanged);
     _descController.dispose();
     _amountController.dispose();
     _notesController.dispose();
+    _descFocus.dispose();
     super.dispose();
+  }
+
+  /// Live description autocomplete + category memory, ported from the web
+  /// app's `updateDescSug()` + `suggestCat()`: as you type, suggest
+  /// previously-used descriptions and auto-fill the category from the most
+  /// recent matching transaction (never overriding a manual pick).
+  void _onDescChanged() {
+    final data = context.read<AppState>().data;
+    final typed = bareDesc(_descController.text);
+
+    if (typed.length < 3) {
+      if (_descSuggestions.isNotEmpty) {
+        setState(() => _descSuggestions = const []);
+      }
+    } else {
+      final seen = <String>{};
+      final matches = <Txn>[];
+      final sorted = [...data.txns]..sort((a, b) => b.date.compareTo(a.date));
+      for (final t in sorted) {
+        if (t.desc.isEmpty || t.style == 'opening') continue;
+        final bare = bareDesc(t.desc);
+        if (bare.startsWith(typed) && seen.add(bare)) {
+          matches.add(t);
+          if (matches.length >= 7) break;
+        }
+      }
+      setState(() => _descSuggestions = matches);
+    }
+
+    if (_cat.isNotEmpty && _cat != _lastAutoCat) {
+      return; // user chose their own category
+    }
+    if (typed.length < 2) {
+      if (_lastAutoCat != null) setState(() => _cat = '');
+      return;
+    }
+    final best = data.txns
+        .where((t) =>
+            t.cat.isNotEmpty &&
+            t.desc.isNotEmpty &&
+            t.style != 'opening' &&
+            bareDesc(t.desc).startsWith(typed))
+        .toList()
+      ..sort((a, b) => b.date.compareTo(a.date));
+    if (best.isNotEmpty) {
+      setState(() {
+        _cat = best.first.cat;
+        _lastAutoCat = best.first.cat;
+      });
+    } else if (_lastAutoCat != null) {
+      setState(() {
+        _cat = '';
+        _lastAutoCat = null;
+      });
+    }
+  }
+
+  void _pickSuggestion(Txn t) {
+    _descController.text = t.desc;
+    _descController.selection = TextSelection.collapsed(offset: t.desc.length);
+    setState(() {
+      _descSuggestions = const [];
+      _cat = t.cat;
+      _lastAutoCat = t.cat.isNotEmpty ? t.cat : _lastAutoCat;
+    });
+    _descFocus.unfocus();
   }
 
   Future<void> _pickDate() async {
@@ -155,9 +233,30 @@ class _AddEditTransactionSheetState extends State<AddEditTransactionSheet> {
               ),
               TextField(
                 controller: _descController,
+                focusNode: _descFocus,
                 decoration: const InputDecoration(
                     labelText: 'Descrição', border: OutlineInputBorder()),
               ),
+              if (_descSuggestions.isNotEmpty)
+                Container(
+                  margin: const EdgeInsets.only(top: 4),
+                  decoration: BoxDecoration(
+                    border: Border.all(color: Theme.of(context).dividerColor),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      for (final t in _descSuggestions)
+                        ListTile(
+                          dense: true,
+                          title: Text(t.desc),
+                          subtitle: t.cat.isNotEmpty ? Text(t.cat) : null,
+                          onTap: () => _pickSuggestion(t),
+                        ),
+                    ],
+                  ),
+                ),
               const SizedBox(height: 12),
               Row(
                 children: [
@@ -201,7 +300,13 @@ class _AddEditTransactionSheetState extends State<AddEditTransactionSheet> {
               ListTile(
                 contentPadding: EdgeInsets.zero,
                 title: const Text('Categoria'),
-                trailing: Text(_cat),
+                trailing: Text(
+                  _cat.isEmpty ? 'Selecionar' : _cat,
+                  style: _cat.isEmpty
+                      ? TextStyle(
+                          color: Theme.of(context).textTheme.bodySmall?.color)
+                      : null,
+                ),
                 onTap: _pickCategory,
               ),
               TextField(

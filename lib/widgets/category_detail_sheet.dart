@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../data/categories.dart';
 import '../models/goal.dart';
+import '../models/transaction.dart';
 import '../state/app_state.dart';
 import '../theme/app_theme.dart';
 import '../utils/calculations.dart';
@@ -31,6 +32,7 @@ class CategoryDetailSheet extends StatefulWidget {
 
 class _CategoryDetailSheetState extends State<CategoryDetailSheet> {
   late TextEditingController _budgetController;
+  bool _showFuture = false;
 
   @override
   void initState() {
@@ -84,9 +86,15 @@ class _CategoryDetailSheetState extends State<CategoryDetailSheet> {
         Calculations.carryoverFor(data, widget.category, widget.month);
     final goal = data.goals[widget.category];
 
-    final monthTxns = data.txns
-        .where(
-            (t) => t.cat == widget.category && monthOf(t.date) == widget.month)
+    final today = todayIso();
+    final allMonthTxns = data.txns.where(
+        (t) => t.cat == widget.category && monthOf(t.date) == widget.month);
+    final futureTxns = allMonthTxns
+        .where((t) => t.date.compareTo(today) > 0)
+        .toList()
+      ..sort((a, b) => a.date.compareTo(b.date));
+    final pastTxns = allMonthTxns
+        .where((t) => t.date.compareTo(today) <= 0)
         .toList()
       ..sort((a, b) => b.date.compareTo(a.date));
 
@@ -164,28 +172,49 @@ class _CategoryDetailSheetState extends State<CategoryDetailSheet> {
             Text('Transações do mês',
                 style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: 8),
-            if (monthTxns.isEmpty) const Text('Nenhuma transação.'),
-            for (final t in monthTxns)
+            if (futureTxns.isNotEmpty) ...[
               ListTile(
                 contentPadding: EdgeInsets.zero,
-                title: Text(t.desc),
-                subtitle: Text(displayDate(t.date)),
-                trailing: Text(
-                  formatEurSigned(t.net),
-                  style: TextStyle(
-                    fontWeight: FontWeight.w700,
-                    color: t.net < 0
-                        ? MarleyColors.red(brightness)
-                        : MarleyColors.green(brightness),
-                  ),
+                dense: true,
+                title: Text(
+                  _showFuture
+                      ? '▾ PRÓXIMOS — ${futureTxns.length} agendados'
+                      : '▸ PRÓXIMOS — ${futureTxns.length} agendados',
+                  style: const TextStyle(
+                      fontWeight: FontWeight.w600, fontSize: 13),
                 ),
-                onTap: () async {
-                  Navigator.of(context).pop();
-                  await AddEditTransactionSheet.show(context, existing: t);
-                },
+                onTap: () => setState(() => _showFuture = !_showFuture),
               ),
+              if (_showFuture)
+                for (final t in futureTxns) _txnTile(context, t, brightness),
+              const Divider(height: 1),
+            ],
+            if (pastTxns.isEmpty && futureTxns.isEmpty)
+              const Text('Nenhuma transação.'),
+            for (final t in pastTxns) _txnTile(context, t, brightness),
           ],
         );
+      },
+    );
+  }
+
+  Widget _txnTile(BuildContext context, Txn t, Brightness brightness) {
+    return ListTile(
+      contentPadding: EdgeInsets.zero,
+      title: Text(t.desc),
+      subtitle: Text(displayDate(t.date)),
+      trailing: Text(
+        formatEurSigned(t.net),
+        style: TextStyle(
+          fontWeight: FontWeight.w700,
+          color: t.net < 0
+              ? MarleyColors.red(brightness)
+              : MarleyColors.green(brightness),
+        ),
+      ),
+      onTap: () async {
+        Navigator.of(context).pop();
+        await AddEditTransactionSheet.show(context, existing: t);
       },
     );
   }

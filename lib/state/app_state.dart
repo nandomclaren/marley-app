@@ -46,9 +46,14 @@ class AppState extends ChangeNotifier {
   Future<void> init() async {
     if (_initialized) return;
     _initialized = true;
-    final loaded = await _storage.load();
-    if (loaded != null) {
-      _data = loaded;
+    try {
+      final loaded = await _storage.load();
+      if (loaded != null) {
+        _data = loaded;
+      }
+    } catch (_) {
+      // Best-effort; fall back to the in-memory default and let sync
+      // (below) recover from the Gist if local storage is unavailable.
     }
     _pickInitialMonth();
     notifyListeners();
@@ -215,6 +220,63 @@ class AppState extends ChangeNotifier {
 
   Future<void> updateBalances(Balances b) async {
     _data = _data.copyWith(balances: b);
+    _touch();
+    await _persist();
+  }
+
+  /// Flips `cleared` on a transaction (swipe-to-clear). No-op on locked
+  /// (already reconciled) rows — matches the web app's `toggleCleared`.
+  Future<void> toggleCleared(int id) async {
+    Txn? txn;
+    for (final t in _data.txns) {
+      if (t.id == id) {
+        txn = t;
+        break;
+      }
+    }
+    if (txn == null || txn.locked) return;
+    await updateTxn(txn.copyWith(cleared: !txn.cleared));
+  }
+
+  /// Reconcile [acct]: locks every cleared-but-unlocked transaction on it,
+  /// and — when the user supplied [realBalance] (it didn't match what the
+  /// app had) — appends a locked correction transaction for the
+  /// difference. Matches the web app's `lockClearedTxns` +
+  /// `recSubmitCorrection` (the "yes, it matches" path passes no
+  /// [realBalance] and only locks).
+  Future<void> reconcileAccount({
+    required String acct,
+    double? realBalance,
+    required double clearedBalanceBefore,
+  }) async {
+    var txns = _data.txns.map((t) {
+      if (t.acct == acct && t.cleared && !t.locked) {
+        return t.copyWith(cleared: false, locked: true);
+      }
+      return t;
+    }).toList();
+
+    if (realBalance != null) {
+      final diff = realBalance - clearedBalanceBefore;
+      txns = [
+        ...txns,
+        Txn(
+          id: nextTxnId(),
+          date: todayIso(),
+          desc: '🔧 Transação de correção',
+          acct: acct,
+          out: diff < 0 ? diff.abs() : 0,
+          in_: diff > 0 ? diff : 0,
+          notes:
+              'Correção de reconciliação (esperado ${formatEur(realBalance)}, '
+              'encontrado ${formatEur(clearedBalanceBefore)})',
+          cleared: false,
+          locked: true,
+        ),
+      ];
+    }
+
+    _data = _data.copyWith(txns: txns);
     _touch();
     await _persist();
   }
