@@ -1,5 +1,6 @@
 import '../data/categories.dart';
 import '../models/app_data.dart';
+import '../models/transaction.dart';
 import 'formatters.dart';
 
 /// Pure functions implementing Marley's financial logic. Ported 1:1 from the
@@ -8,34 +9,112 @@ import 'formatters.dart';
 class Calculations {
   Calculations._();
 
-  /// Sum of the three account opening balances.
+  /// Sum of the three account opening balances (the manually-set starting
+  /// point, i.e. `data.balances` — matches the web app's `getOp()`/`total`).
   static double totalOpeningBalance(AppData data) {
     return data.balances.rev + data.balances.wise + data.balances.swile;
   }
 
-  /// Total balance across all accounts as of [asOfDate] (inclusive),
-  /// excluding 'opening' rows (which are already baked into `balances`).
-  static double balanceAsOf(AppData data, String asOfDate) {
-    var total = totalOpeningBalance(data);
-    for (final t in data.txns) {
-      if (t.style == 'opening') continue;
-      if (t.date.compareTo(asOfDate) <= 0) {
-        total += t.net;
+  /// Running per-account + total balance after each transaction, walked in
+  /// (date, id) order from `data.balances`. Mirrors the web app's
+  /// `compute()` *exactly*: it does NOT skip 'opening'-styled rows — every
+  /// transaction affects the running total regardless of style. `style`
+  /// only ever excludes a row from *selecting a reference point* below
+  /// (see [fluxoSummary]), never from the running sum itself.
+  static List<LedgerRow> computeRows(AppData data) {
+    final sorted = [...data.txns]..sort((a, b) {
+        final c = a.date.compareTo(b.date);
+        if (c != 0) return c;
+        return a.id.compareTo(b.id);
+      });
+    var rev = data.balances.rev;
+    var wise = data.balances.wise;
+    var swile = data.balances.swile;
+    final rows = <LedgerRow>[];
+    for (final t in sorted) {
+      switch (t.acct) {
+        case 'Revolut':
+          rev += t.net;
+          break;
+        case 'Wise':
+          wise += t.net;
+          break;
+        case 'Swile':
+          swile += t.net;
+          break;
       }
+      rows.add(LedgerRow(txn: t, bRev: rev, bWise: wise, bSwile: swile));
     }
-    return total;
+    return rows;
   }
 
-  static double saldoHoje(AppData data) => balanceAsOf(data, todayIso());
+  /// The four Fluxo header cards for [month] ('YYYY-MM'), ported 1:1 from
+  /// the web app's `render()`: start-of-month balance, today's balance,
+  /// projected end-of-month balance, and the lowest point reached during
+  /// the month (with the date it happened).
+  static FluxoSummary fluxoSummary(AppData data, String month,
+      {DateTime? now}) {
+    final rows = computeRows(data);
+    final total = totalOpeningBalance(data);
+    final today = toIso(now ?? DateTime.now());
+    final monthStart = '$month-01';
+    final monthEnd = lastDayOfMonth(month);
+
+    final priorRows = rows
+        .where((r) =>
+            r.txn.date.compareTo(monthStart) < 0 && r.txn.style != 'opening')
+        .toList();
+    final startBal = priorRows.isNotEmpty ? priorRows.last.bTot : total;
+
+    final monthRows = rows
+        .where((r) =>
+            r.txn.date.compareTo(monthStart) >= 0 &&
+            r.txn.date.compareTo(monthEnd) <= 0)
+        .toList();
+    final finalVal = monthRows.isNotEmpty ? monthRows.last.bTot : startBal;
+
+    final todayRows =
+        rows.where((r) => r.txn.date.compareTo(today) <= 0).toList();
+    final hojeVal = todayRows.isNotEmpty ? todayRows.last.bTot : startBal;
+
+    double? minVal;
+    String? minDate;
+    if (monthRows.isNotEmpty) {
+      minVal = monthRows.map((r) => r.bTot).reduce((a, b) => a < b ? a : b);
+      minDate = monthRows.firstWhere((r) => r.bTot == minVal).txn.date;
+    }
+
+    return FluxoSummary(
+      startBal: startBal,
+      hojeVal: hojeVal,
+      finalVal: finalVal,
+      minVal: minVal,
+      minDate: minDate,
+    );
+  }
+
+  static double saldoHoje(AppData data, {DateTime? now}) {
+    final today = now ?? DateTime.now();
+    return fluxoSummary(data, monthOf(toIso(today)), now: today).hojeVal;
+  }
 
   /// NDMP: delta between today's balance and the balance on the same
-  /// calendar day one month ago.
+  /// calendar day one month ago. Ported from the web app's NDMP row logic —
+  /// note the last-month reference deliberately falls back to 0 (not the
+  /// start-of-month balance) when there's no transaction on/before that
+  /// date, matching the original's quirk exactly.
   static double ndmp(AppData data, {DateTime? now}) {
     final today = now ?? DateTime.now();
+    final currentMonth = monthOf(toIso(today));
+    final hojeVal = fluxoSummary(data, currentMonth, now: today).hojeVal;
+
     final lastMonthDate = _sameDayLastMonth(today);
-    final saldoHojeVal = balanceAsOf(data, toIso(today));
-    final saldoLmVal = balanceAsOf(data, toIso(lastMonthDate));
-    return saldoHojeVal - saldoLmVal;
+    final lmIso = toIso(lastMonthDate);
+    final rows = computeRows(data);
+    final lmRows = rows.where((r) => r.txn.date.compareTo(lmIso) <= 0).toList();
+    final lmBal = lmRows.isNotEmpty ? lmRows.last.bTot : 0.0;
+
+    return hojeVal - lmBal;
   }
 
   static DateTime _sameDayLastMonth(DateTime d) {
@@ -123,17 +202,47 @@ class Calculations {
         0.0, (a, cat) => a + availableFor(data, cat, month));
   }
 
-  /// Cash inflow for [month], across all accounts (used by the Reflect tab's
-  /// Income vs Spending chart — distinct from per-category budget "Gasto").
-  static double totalIncome(AppData data, String month) {
+  /// Spending for [cat] in [month] as shown by the Reflect tab's Spending
+  /// Breakdown — distinct from Budget's `spentForCategory`: this one uses
+  /// raw outflow (not net of refunds), excludes 'opening' rows, and only
+  /// counts up to [asOf] (today), matching the web app's chart filter.
+  static double reflectSpentForCategory(AppData data, String month, String cat,
+      {String? asOf}) {
+    final cutoff = asOf ?? todayIso();
     return data.txns
-        .where((t) => monthOf(t.date) == month && t.style != 'opening')
+        .where((t) =>
+            t.cat == cat &&
+            monthOf(t.date) == month &&
+            t.date.compareTo(cutoff) <= 0 &&
+            t.style != 'opening' &&
+            t.out > 0)
+        .fold(0.0, (a, t) => a + t.out);
+  }
+
+  /// Cash inflow for [month], across accounts (used by the Reflect tab's
+  /// Income vs Spending chart — distinct from per-category budget "Gasto").
+  /// Only counts up to [asOf] (today) and excludes account-less rows, per
+  /// the web app's `incData` filter.
+  static double totalIncome(AppData data, String month, {String? asOf}) {
+    final cutoff = asOf ?? todayIso();
+    return data.txns
+        .where((t) =>
+            monthOf(t.date) == month &&
+            t.in_ > 0 &&
+            t.style != 'opening' &&
+            t.date.compareTo(cutoff) <= 0 &&
+            t.acct != kNoAccount)
         .fold(0.0, (a, t) => a + t.in_);
   }
 
-  static double totalOutflow(AppData data, String month) {
+  static double totalOutflow(AppData data, String month, {String? asOf}) {
+    final cutoff = asOf ?? todayIso();
     return data.txns
-        .where((t) => monthOf(t.date) == month && t.style != 'opening')
+        .where((t) =>
+            monthOf(t.date) == month &&
+            t.out > 0 &&
+            t.style != 'opening' &&
+            t.date.compareTo(cutoff) <= 0)
         .fold(0.0, (a, t) => a + t.out);
   }
 
@@ -255,4 +364,37 @@ class _MoneyBucket {
   final String date;
   double amount;
   _MoneyBucket(this.date, this.amount);
+}
+
+/// One row of [Calculations.computeRows]: a transaction plus the running
+/// per-account balances immediately after it.
+class LedgerRow {
+  final Txn txn;
+  final double bRev;
+  final double bWise;
+  final double bSwile;
+  double get bTot => bRev + bWise + bSwile;
+
+  LedgerRow(
+      {required this.txn,
+      required this.bRev,
+      required this.bWise,
+      required this.bSwile});
+}
+
+/// The four Fluxo header cards for a given month.
+class FluxoSummary {
+  final double startBal;
+  final double hojeVal;
+  final double finalVal;
+  final double? minVal;
+  final String? minDate;
+
+  const FluxoSummary({
+    required this.startBal,
+    required this.hojeVal,
+    required this.finalVal,
+    this.minVal,
+    this.minDate,
+  });
 }

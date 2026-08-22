@@ -51,6 +51,7 @@ class _FluxoScreenState extends State<FluxoScreen> {
 
     final ndmp = Calculations.ndmp(data);
     final showNdmp = month == currentRealMonth;
+    final summary = Calculations.fluxoSummary(data, month);
 
     return Scaffold(
       appBar: AppBar(
@@ -61,17 +62,26 @@ class _FluxoScreenState extends State<FluxoScreen> {
         children: [
           SummaryCards(cards: [
             SummaryCardData(
-                label: 'Orçado',
-                value: Calculations.totalBudgeted(data, month)),
-            SummaryCardData(
-                label: 'Gasto', value: Calculations.totalSpent(data, month)),
-            SummaryCardData(
-              label: 'Disponível',
-              value: Calculations.totalAvailable(data, month),
-              colorByValue: true,
+              label: 'Início de ${monthLabel(month)}',
+              value: summary.startBal,
             ),
             SummaryCardData(
-                label: 'Saldo Hoje', value: Calculations.saldoHoje(data)),
+              label: 'Saldo Hoje (${displayDate(today)})',
+              value: summary.hojeVal,
+            ),
+            SummaryCardData(
+              label: 'Projetado fim do mês',
+              value: summary.finalVal,
+            ),
+            SummaryCardData(
+              label: '⚠️ Mínimo do mês',
+              value: summary.minVal ?? 0,
+              subtitle: summary.minDate != null
+                  ? 'em ${displayDate(summary.minDate!)}'
+                  : null,
+              dangerCard: true,
+              redBelowThreshold: 800,
+            ),
           ]),
           MonthPicker(
             months: data.months,

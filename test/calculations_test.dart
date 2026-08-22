@@ -19,45 +19,63 @@ AppData _dataWith({
 }
 
 void main() {
-  group('balanceAsOf / saldoHoje', () {
-    test('sums opening balances plus non-opening txns up to the date', () {
-      final data = _dataWith(
-        balances: const Balances(rev: 100, wise: 50, swile: 10),
-        txns: [
-          const Txn(
-              id: 1,
-              date: '2026-01-01',
-              desc: 'a',
-              acct: 'Revolut',
-              out: 0,
-              in_: 20,
-              style: 'opening'),
-          const Txn(
-              id: 2,
-              date: '2026-01-05',
-              desc: 'b',
-              acct: 'Revolut',
-              out: 30,
-              in_: 0),
-          const Txn(
-              id: 3,
-              date: '2026-01-10',
-              desc: 'c',
-              acct: 'Wise',
-              out: 0,
-              in_: 15),
-          const Txn(
-              id: 4,
-              date: '2026-02-01',
-              desc: 'future',
-              acct: 'Wise',
-              out: 5,
-              in_: 0),
-        ],
-      );
-      // 100+50+10 + (-30) + (+15) = 145, the 'opening' row and the
-      // 2026-02-01 row (after asOf) must be excluded.
-      expect(Calculations.balanceAsOf(data, '2026-01-15'), 145);
+  group('computeRows / fluxoSummary', () {
+    // Ported from the web app's `compute()`: the running balance walk does
+    // NOT skip 'opening'-styled rows — every transaction affects it. Only
+    // some *reference-point selections* downstream (e.g. start-of-month)
+    // skip opening rows; the cumulative sum itself never does.
+    final data = _dataWith(
+      balances: const Balances(rev: 100, wise: 50, swile: 10),
+      txns: [
+        const Txn(
+            id: 1,
+            date: '2026-01-01',
+            desc: 'a',
+            acct: 'Revolut',
+            out: 0,
+            in_: 20,
+            style: 'opening'),
+        const Txn(
+            id: 2,
+            date: '2026-01-05',
+            desc: 'b',
+            acct: 'Revolut',
+            out: 30,
+            in_: 0),
+        const Txn(
+            id: 3,
+            date: '2026-01-10',
+            desc: 'c',
+            acct: 'Wise',
+            out: 0,
+            in_: 15),
+        const Txn(
+            id: 4,
+            date: '2026-02-01',
+            desc: 'future',
+            acct: 'Wise',
+            out: 5,
+            in_: 0),
+      ],
+    );
+
+    test(
+        'running balance includes opening-styled rows, unlike per-category spend',
+        () {
+      final rows = Calculations.computeRows(data);
+      expect(rows.map((r) => r.bTot).toList(), [180, 150, 165, 160]);
+    });
+
+    test(
+        'hojeVal reflects the running balance as of "today", opening rows included',
+        () {
+      final summary = Calculations.fluxoSummary(data, '2026-01',
+          now: DateTime(2026, 1, 15));
+      // 100+50+10 (open) +20 (t1, opening) -30 (t2) +15 (t3) = 165; t4 (Feb) excluded.
+      expect(summary.hojeVal, 165);
+      expect(summary.startBal,
+          160); // no prior-month rows -> falls back to total balances
+      expect(summary.finalVal, 165); // last row within January
     });
   });
 

@@ -10,7 +10,8 @@ void main() {
     await initializeDateFormatting('pt_BR');
   });
 
-  testWidgets('add a transaction from Fluxo and see it in the ledger', (tester) async {
+  testWidgets('add a transaction from Fluxo and see it in the ledger',
+      (tester) async {
     await tester.pumpWidget(const MarleyApp());
     await tester.pumpAndSettle();
 
@@ -30,14 +31,16 @@ void main() {
         )
         .first;
     final salvarButton = find.widgetWithText(FilledButton, 'Salvar');
-    await tester.scrollUntilVisible(salvarButton, 200, scrollable: sheetScrollable);
+    await tester.scrollUntilVisible(salvarButton, 200,
+        scrollable: sheetScrollable);
     await tester.tap(salvarButton);
     await tester.pumpAndSettle();
 
     expect(find.text('Café'), findsOneWidget);
   });
 
-  testWidgets('switching tabs shows Budget, Reflect and Contas without errors', (tester) async {
+  testWidgets('switching tabs shows Budget, Reflect and Contas without errors',
+      (tester) async {
     await tester.pumpWidget(const MarleyApp());
     await tester.pumpAndSettle();
 
@@ -54,7 +57,8 @@ void main() {
     expect(find.text('Saldo atual'), findsOneWidget);
   });
 
-  testWidgets('tapping a Budget category opens its detail sheet', (tester) async {
+  testWidgets('tapping a Budget category opens its detail sheet',
+      (tester) async {
     await tester.pumpWidget(const MarleyApp());
     await tester.pumpAndSettle();
 

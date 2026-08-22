@@ -10,9 +10,10 @@ import '../utils/calculations.dart';
 import '../utils/formatters.dart';
 import '../widgets/sync_button.dart';
 
-/// Months are 'YYYY-MM'. February is always excluded from Reflect — it was
-/// the app's startup month and its data is incomplete.
-bool _isFebruary(String yyyymm) => yyyymm.endsWith('-02');
+/// '2026-02' is always excluded from Reflect — it was the app's startup
+/// month (mid-month, incomplete data). Matches the web app's literal
+/// `mo2 !== '2026-02'` check, not "any February".
+bool _isFebruary(String yyyymm) => yyyymm == '2026-02';
 
 class ReflectScreen extends StatefulWidget {
   const ReflectScreen({super.key});
@@ -160,7 +161,7 @@ class _SpendingBreakdown extends StatelessWidget {
   Widget build(BuildContext context) {
     final entries = <MapEntry<String, double>>[];
     for (final cat in kAllCategories) {
-      final spent = Calculations.spentForCategory(data, month, cat);
+      final spent = Calculations.reflectSpentForCategory(data, month, cat);
       if (spent > 0) entries.add(MapEntry(cat, spent));
     }
     entries.sort((a, b) => b.value.compareTo(a.value));
