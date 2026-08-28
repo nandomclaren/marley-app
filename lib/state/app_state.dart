@@ -9,12 +9,24 @@ import '../utils/formatters.dart';
 
 enum SyncStatus { idle, syncing, error }
 
+/// A snapshot of the two divergent copies of the data, presented to the
+/// user so *they* pick a winner instead of the app silently guessing.
+class SyncConflict {
+  final AppData remote;
+  final AppData local;
+  const SyncConflict({required this.remote, required this.local});
+}
+
 /// Central app state: owns the [AppData] blob, all mutations, local
 /// persistence, and Gist sync. Every mutation bumps `_lastModified` so the
 /// "newest wins" sync rule has something to compare.
 class AppState extends ChangeNotifier {
-  final StorageService _storage = StorageService();
-  final GistSyncService gistSync = GistSyncService();
+  final StorageService _storage;
+  final GistSyncService gistSync;
+
+  AppState({StorageService? storage, GistSyncService? gistSync})
+      : _storage = storage ?? StorageService(),
+        gistSync = gistSync ?? GistSyncService();
 
   AppData _data = AppData.empty();
   AppData get data => _data;
@@ -26,7 +38,29 @@ class AppState extends ChangeNotifier {
       _data.months.isNotEmpty ? _data.months.last : todayIso().substring(0, 7);
   SyncStatus syncStatus = SyncStatus.idle;
   String? syncError;
+
+  // The remote's `_lastModified` as of the last time this session actually
+  // looked at it (pull or push) — NOT the same as `_data.lastModified`,
+  // which only reflects our own edits. Comparing against this (rather than
+  // just "is local newer than remote") is what lets us tell "remote hasn't
+  // moved, safe to push" apart from "remote moved since we last looked,
+  // ask before overwriting" even when local also looks newer by raw
+  // timestamp. Mirrors the same fix applied on the web app after a stale
+  // local timestamp caused it to silently overwrite a week of Flutter-app
+  // data with older web data.
   int _lastSyncedTs = 0;
+
+  // Never push from a background/lifecycle hook before this session has
+  // actually verified the remote at least once — pushing based on a
+  // timestamp alone, without ever having looked at what's actually on the
+  // server this session, is exactly how that overwrite happened.
+  bool _hasSyncedThisSession = false;
+
+  /// Set when a real conflict is detected: the remote moved since our last
+  /// known sync point *and* local also looks newer. Non-null means a
+  /// dialog should be shown asking the user to pick a side — see
+  /// [resolveConflictKeepLocal] / [resolveConflictUseRemote].
+  SyncConflict? pendingConflict;
 
   bool? _manualDarkOverride;
   bool get isDarkModeOverridden => _manualDarkOverride != null;
@@ -80,17 +114,52 @@ class AppState extends ChangeNotifier {
   // Sync
   // ---------------------------------------------------------------------
 
+  /// Manual sync (button, and once on app start): always fetches the
+  /// remote first, then decides:
+  ///  - no remote yet, or remote unchanged since our last known sync point
+  ///    → safe to push local.
+  ///  - remote is newer than local → safe to adopt remote outright (that
+  ///    direction never destroys anything of ours).
+  ///  - remote moved since we last looked AND local also looks newer →
+  ///    genuine conflict, do not guess: surface [pendingConflict] and stop.
   Future<void> trySync() async {
     if (!await gistSync.hasCredentials()) return;
     syncStatus = SyncStatus.syncing;
     notifyListeners();
     try {
-      final outcome = await gistSync.sync(_data);
-      if (outcome.adoptedRemote) {
-        _data = outcome.data;
+      final remote = await gistSync.fetchRemote();
+      _hasSyncedThisSession = true;
+
+      if (remote == null) {
+        await gistSync.pushData(_data);
+        _lastSyncedTs = _data.lastModified;
+      } else if (remote.lastModified > _data.lastModified) {
+        _data = remote;
         await _storage.save(_data);
         _ensureSelectedMonthValid();
+        _lastSyncedTs = remote.lastModified;
+      } else if (remote.lastModified > _lastSyncedTs) {
+        pendingConflict = SyncConflict(remote: remote, local: _data);
+      } else {
+        await gistSync.pushData(_data);
+        _lastSyncedTs = _data.lastModified;
       }
+      syncError = null;
+      syncStatus = SyncStatus.idle;
+    } catch (e) {
+      syncError = e.toString();
+      syncStatus = SyncStatus.error;
+    }
+    notifyListeners();
+  }
+
+  /// User picked "keep this device's data" on a conflict: push local,
+  /// overwriting the server.
+  Future<void> resolveConflictKeepLocal() async {
+    if (pendingConflict == null) return;
+    pendingConflict = null;
+    try {
+      await gistSync.pushData(_data);
       _lastSyncedTs = _data.lastModified;
       syncError = null;
       syncStatus = SyncStatus.idle;
@@ -101,13 +170,36 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Push-only sync, meant for app lifecycle (background/close) hooks: does
-  /// nothing if the remote is already at least as new.
+  /// User picked "use the server's data" on a conflict: adopt remote,
+  /// discarding local's unsynced changes.
+  Future<void> resolveConflictUseRemote() async {
+    final remote = pendingConflict?.remote;
+    pendingConflict = null;
+    if (remote == null) return;
+    _data = remote;
+    await _storage.save(_data);
+    _ensureSelectedMonthValid();
+    _lastSyncedTs = remote.lastModified;
+    notifyListeners();
+  }
+
+  /// Push-only sync, meant for app lifecycle (background/close) hooks.
+  /// Refuses to push if this session never verified the remote (nothing to
+  /// safely compare against), and re-checks the remote's current
+  /// timestamp right before pushing — if someone else pushed since our
+  /// last known sync point, backs off silently rather than risk a
+  /// clobber with no UI available to ask.
   Future<void> pushIfDirty() async {
+    if (!_hasSyncedThisSession) return;
     if (!await gistSync.hasCredentials()) return;
+    if (_data.lastModified <= _lastSyncedTs) return;
     try {
-      final pushed = await gistSync.pushIfNewer(_data, _lastSyncedTs);
-      if (pushed) _lastSyncedTs = _data.lastModified;
+      final remoteTs = await gistSync.fetchRemoteLastModified();
+      if (remoteTs != null && remoteTs > _lastSyncedTs) {
+        return; // someone else moved the remote; let a manual sync sort it out
+      }
+      await gistSync.pushData(_data);
+      _lastSyncedTs = _data.lastModified;
     } catch (_) {
       // Best-effort; the next manual sync will surface any real problem.
     }

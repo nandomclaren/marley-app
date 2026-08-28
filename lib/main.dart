@@ -8,6 +8,7 @@ import 'screens/fluxo_screen.dart';
 import 'screens/reflect_screen.dart';
 import 'state/app_state.dart';
 import 'theme/app_theme.dart';
+import 'widgets/sync_conflict_gate.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -42,7 +43,7 @@ class MarleyApp extends StatelessWidget {
               if (appState.isDarkModeOverridden) return child!;
               return Theme(data: buildMarleyTheme(brightness), child: child!);
             },
-            home: const HomeShell(),
+            home: const SyncConflictGate(child: HomeShell()),
           );
         },
       ),

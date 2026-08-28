@@ -14,16 +14,12 @@ class GistSyncBlockedException implements Exception {
   String toString() => message;
 }
 
-class SyncOutcome {
-  final bool adoptedRemote;
-  final AppData data;
-  SyncOutcome({required this.adoptedRemote, required this.data});
-}
-
-/// Syncs the local data blob against a single file (`marley-data.json`) in a
-/// secret GitHub Gist, with 24 rotating hourly backup files
-/// (`marley-bk-00h.json` .. `marley-bk-23h.json`). Whichever side has the
-/// newer `_lastModified` wins — see SyncOutcome.
+/// Talks to a single file (`marley-data.json`) in a secret GitHub Gist,
+/// with 24 rotating hourly backup files (`marley-bk-00h.json` ..
+/// `marley-bk-23h.json`). Deliberately has no "just sync it" method: the
+/// orchestration (when it's safe to push vs. when a conflict needs a human
+/// decision) lives in [AppState], which is the only place that knows what
+/// this device last actually saw on the server.
 class GistSyncService {
   final _secureStorage = const FlutterSecureStorage();
   static const _patKey = 'marley_gist_pat';
@@ -141,28 +137,10 @@ class GistSyncService {
     }
   }
 
-  /// Full two-way sync: fetches remote, adopts it if newer, otherwise pushes
-  /// local. Call this from the manual "sync" button.
-  Future<SyncOutcome> sync(AppData local) async {
+  /// Just the remote's `_lastModified`, without adopting anything — used to
+  /// check for a conflict before a background/silent push.
+  Future<int?> fetchRemoteLastModified() async {
     final remote = await fetchRemote();
-    if (remote == null) {
-      await pushData(local);
-      return SyncOutcome(adoptedRemote: false, data: local);
-    }
-    if (remote.lastModified > local.lastModified) {
-      return SyncOutcome(adoptedRemote: true, data: remote);
-    }
-    await pushData(local);
-    return SyncOutcome(adoptedRemote: false, data: local);
-  }
-
-  /// Push-only sync used for background/auto-save: only pushes if the local
-  /// copy is newer than what was last synced.
-  Future<bool> pushIfNewer(AppData local, int lastSyncedTs) async {
-    if (local.lastModified > lastSyncedTs) {
-      await pushData(local);
-      return true;
-    }
-    return false;
+    return remote?.lastModified;
   }
 }
