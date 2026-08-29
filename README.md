@@ -66,6 +66,12 @@ A lógica financeira em `lib/utils/calculations.dart` é uma porta fiel do
 `index.html` original — qualquer alteração de comportamento aí deve ser
 validada contra a versão web antes de mergear.
 
+## Atualização OTA (Shorebird)
+
+Ainda não implementado — o plano completo (o que cobre, passo a passo do
+setup local, o que muda no CI) está documentado em
+[`docs/OTA_UPDATES.md`](docs/OTA_UPDATES.md) para quando formos ligar isso.
+
 ## O que não foi portado
 
 A antiga aba "Gráficos" (donut por grupo + Orçado vs Gasto) foi aposentada
