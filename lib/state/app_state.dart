@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 
 import '../data/gist_sync_service.dart';
@@ -55,6 +57,15 @@ class AppState extends ChangeNotifier {
   // timestamp alone, without ever having looked at what's actually on the
   // server this session, is exactly how that overwrite happened.
   bool _hasSyncedThisSession = false;
+
+  // Every transaction CRUD (add/edit/delete/clear/reconcile) now kicks off
+  // a sync right away instead of waiting for a manual tap or the app being
+  // backgrounded. Those actions can fire in quick succession (e.g. clearing
+  // several rows), so guard against overlapping network calls: a `trySync`
+  // that starts while one is already running just marks that another pass
+  // is needed once the current one finishes, rather than racing it.
+  bool _syncInFlight = false;
+  bool _syncQueuedAgain = false;
 
   /// Set when a real conflict is detected: the remote moved since our last
   /// known sync point *and* local also looks newer. Non-null means a
@@ -123,34 +134,69 @@ class AppState extends ChangeNotifier {
   ///  - remote moved since we last looked AND local also looks newer →
   ///    genuine conflict, do not guess: surface [pendingConflict] and stop.
   Future<void> trySync() async {
-    if (!await gistSync.hasCredentials()) return;
-    syncStatus = SyncStatus.syncing;
-    notifyListeners();
-    try {
-      final remote = await gistSync.fetchRemote();
-      _hasSyncedThisSession = true;
-
-      if (remote == null) {
-        await gistSync.pushData(_data);
-        _lastSyncedTs = _data.lastModified;
-      } else if (remote.lastModified > _data.lastModified) {
-        _data = remote;
-        await _storage.save(_data);
-        _ensureSelectedMonthValid();
-        _lastSyncedTs = remote.lastModified;
-      } else if (remote.lastModified > _lastSyncedTs) {
-        pendingConflict = SyncConflict(remote: remote, local: _data);
-      } else {
-        await gistSync.pushData(_data);
-        _lastSyncedTs = _data.lastModified;
-      }
-      syncError = null;
-      syncStatus = SyncStatus.idle;
-    } catch (e) {
-      syncError = e.toString();
-      syncStatus = SyncStatus.error;
+    if (_syncInFlight) {
+      _syncQueuedAgain = true;
+      return;
     }
-    notifyListeners();
+    _syncInFlight = true;
+    try {
+      bool hasCreds;
+      try {
+        hasCreds = await gistSync.hasCredentials();
+      } catch (_) {
+        // Reading credentials shouldn't be able to fail in practice (it's
+        // just secure-storage reads), but this now runs automatically after
+        // every transaction edit rather than only from an explicit user
+        // tap — so treat any failure here the same as "not configured yet"
+        // instead of surfacing an error for something the user didn't ask
+        // for.
+        return;
+      }
+      if (!hasCreds) return;
+      syncStatus = SyncStatus.syncing;
+      notifyListeners();
+      try {
+        final remote = await gistSync.fetchRemote();
+        _hasSyncedThisSession = true;
+
+        if (remote == null) {
+          await gistSync.pushData(_data);
+          _lastSyncedTs = _data.lastModified;
+        } else if (remote.lastModified > _data.lastModified) {
+          _data = remote;
+          await _storage.save(_data);
+          _ensureSelectedMonthValid();
+          _lastSyncedTs = remote.lastModified;
+        } else if (remote.lastModified > _lastSyncedTs) {
+          pendingConflict = SyncConflict(remote: remote, local: _data);
+        } else {
+          await gistSync.pushData(_data);
+          _lastSyncedTs = _data.lastModified;
+        }
+        syncError = null;
+        syncStatus = SyncStatus.idle;
+      } catch (e) {
+        syncError = e.toString();
+        syncStatus = SyncStatus.error;
+      }
+      notifyListeners();
+    } finally {
+      _syncInFlight = false;
+      if (_syncQueuedAgain) {
+        _syncQueuedAgain = false;
+        unawaited(trySync());
+      }
+    }
+  }
+
+  /// Fire-and-forget sync kicked off right after a transaction CRUD
+  /// mutation (add/edit/delete/clear/reconcile), so changes reach the Gist
+  /// without waiting for a manual tap or the app being backgrounded.
+  /// Deliberately not awaited by callers — network shouldn't block the UI
+  /// from closing a sheet or reflecting the edit immediately; `trySync`
+  /// still surfaces the usual conflict dialog / error state on its own.
+  void _autoSyncTxns() {
+    unawaited(trySync());
   }
 
   /// User picked "keep this device's data" on a conflict: push local,
@@ -235,6 +281,7 @@ class AppState extends ChangeNotifier {
     _data = _data.copyWith(txns: [..._data.txns, t]);
     _touch();
     await _persist();
+    _autoSyncTxns();
   }
 
   Future<void> updateTxn(Txn t) async {
@@ -242,12 +289,14 @@ class AppState extends ChangeNotifier {
         txns: _data.txns.map((e) => e.id == t.id ? t : e).toList());
     _touch();
     await _persist();
+    _autoSyncTxns();
   }
 
   Future<void> deleteTxn(int id) async {
     _data = _data.copyWith(txns: _data.txns.where((e) => e.id != id).toList());
     _touch();
     await _persist();
+    _autoSyncTxns();
   }
 
   Future<void> setBudget(String month, String cat, double amount) async {
@@ -371,6 +420,7 @@ class AppState extends ChangeNotifier {
     _data = _data.copyWith(txns: txns);
     _touch();
     await _persist();
+    _autoSyncTxns();
   }
 
   void selectMonth(String month) {
