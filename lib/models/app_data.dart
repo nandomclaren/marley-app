@@ -37,6 +37,12 @@ class AppData {
   final Map<String, Map<String, double>> budgets; // month -> cat -> amount
   final Map<String, Goal> goals; // cat -> goal
 
+  // month -> list of transaction descriptions the user explicitly deleted
+  // from that month, so `autoGenerateRecurringTxns` doesn't keep bringing
+  // them back. Mirrors the web app's `data.skipRecurring` (added lazily
+  // there too — absent entirely on data predating this feature).
+  final Map<String, List<String>> skipRecurring;
+
   const AppData({
     required this.lastModified,
     required this.months,
@@ -44,6 +50,7 @@ class AppData {
     required this.txns,
     required this.budgets,
     required this.goals,
+    this.skipRecurring = const {},
   });
 
   factory AppData.empty() {
@@ -67,6 +74,7 @@ class AppData {
     List<Txn>? txns,
     Map<String, Map<String, double>>? budgets,
     Map<String, Goal>? goals,
+    Map<String, List<String>>? skipRecurring,
   }) {
     return AppData(
       lastModified: lastModified ?? this.lastModified,
@@ -75,6 +83,7 @@ class AppData {
       txns: txns ?? this.txns,
       budgets: budgets ?? this.budgets,
       goals: goals ?? this.goals,
+      skipRecurring: skipRecurring ?? this.skipRecurring,
     );
   }
 
@@ -95,6 +104,13 @@ class AppData {
       goals[cat] = Goal.fromJson(v as Map<String, dynamic>);
     });
 
+    final skipRaw = (j['skipRecurring'] as Map<String, dynamic>? ?? {});
+    final skipRecurring = <String, List<String>>{};
+    skipRaw.forEach((month, descs) {
+      skipRecurring[month] =
+          ((descs as List<dynamic>?) ?? []).map((e) => e as String).toList();
+    });
+
     return AppData(
       lastModified: (j['_lastModified'] as num?)?.toInt() ?? 0,
       months: ((j['months'] as List<dynamic>?) ?? [])
@@ -106,6 +122,7 @@ class AppData {
           .toList(),
       budgets: budgets,
       goals: goals,
+      skipRecurring: skipRecurring,
     );
   }
 
@@ -116,6 +133,9 @@ class AppData {
     final goalsJson = <String, dynamic>{};
     goals.forEach((cat, g) => goalsJson[cat] = g.toJson());
 
+    final skipRecurringJson = <String, dynamic>{};
+    skipRecurring.forEach((month, descs) => skipRecurringJson[month] = descs);
+
     return {
       '_lastModified': lastModified,
       'months': months,
@@ -123,6 +143,7 @@ class AppData {
       'txns': txns.map((t) => t.toJson()).toList(),
       'budgets': budgetsJson,
       'goals': goalsJson,
+      'skipRecurring': skipRecurringJson,
     };
   }
 }

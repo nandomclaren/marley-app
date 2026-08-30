@@ -7,6 +7,7 @@ import '../data/storage_service.dart';
 import '../models/app_data.dart';
 import '../models/goal.dart';
 import '../models/transaction.dart';
+import '../utils/calculations.dart';
 import '../utils/formatters.dart';
 
 enum SyncStatus { idle, syncing, error }
@@ -293,7 +294,34 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> deleteTxn(int id) async {
-    _data = _data.copyWith(txns: _data.txns.where((e) => e.id != id).toList());
+    Txn? txn;
+    for (final t in _data.txns) {
+      if (t.id == id) {
+        txn = t;
+        break;
+      }
+    }
+    // Deleting a recurring/fixed/salary/critical row means "not this
+    // month" — remember that so `autoGenerateRecurringTxns` doesn't bring
+    // it right back next time this month is opened. Matches the web app's
+    // `delTxnFromModal`.
+    var skipRecurring = _data.skipRecurring;
+    if (txn != null &&
+        (txn.recurring ||
+            ['fixed', 'salary', 'critical'].contains(txn.style)) &&
+        txn.style != 'opening') {
+      final month = monthOf(txn.date);
+      final monthSkips = <String>[
+        ...(skipRecurring[month] ?? const <String>[])
+      ];
+      if (!monthSkips.contains(txn.desc)) monthSkips.add(txn.desc);
+      skipRecurring = {...skipRecurring, month: monthSkips};
+    }
+
+    _data = _data.copyWith(
+      txns: _data.txns.where((e) => e.id != id).toList(),
+      skipRecurring: skipRecurring,
+    );
     _touch();
     await _persist();
     _autoSyncTxns();
@@ -347,7 +375,7 @@ class AppState extends ChangeNotifier {
         : todayIso().substring(0, 7);
     final next = nextMonth(last);
     if (_data.months.contains(next)) {
-      selectMonth(next);
+      await selectMonth(next);
       return;
     }
     final months = [..._data.months, next];
@@ -356,7 +384,7 @@ class AppState extends ChangeNotifier {
     _data = _data.copyWith(months: months, budgets: budgets);
     _touch();
     await _persist();
-    selectMonth(next);
+    await selectMonth(next);
   }
 
   Future<void> updateBalances(Balances b) async {
@@ -423,8 +451,21 @@ class AppState extends ChangeNotifier {
     _autoSyncTxns();
   }
 
-  void selectMonth(String month) {
+  /// Switches the selected month and, like the web app's `setMonth()`,
+  /// auto-generates this month's recurring transactions from last month's
+  /// (rent, salary, subscriptions, ...) if they aren't already there. A
+  /// no-op scan (nothing new to add) just repaints; a scan that actually
+  /// adds rows also persists and syncs them.
+  Future<void> selectMonth(String month) async {
     selectedMonth = month;
-    notifyListeners();
+    final generated = Calculations.autoGenerateRecurringTxns(_data, month);
+    if (generated.isEmpty) {
+      notifyListeners();
+      return;
+    }
+    _data = _data.copyWith(txns: [..._data.txns, ...generated]);
+    _touch();
+    await _persist();
+    _autoSyncTxns();
   }
 }

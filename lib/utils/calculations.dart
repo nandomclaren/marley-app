@@ -202,6 +202,90 @@ class Calculations {
         0.0, (a, cat) => a + availableFor(data, cat, month));
   }
 
+  static const String _globalFloorDate = '2026-02-28';
+  static const String _globalFloorMonth = '2026-02';
+
+  /// Budget tab's "A Alocar" header card: total income actually received
+  /// (post-startup, up to today) minus everything ever allocated to a
+  /// budget category across every month — a global running total, not
+  /// scoped to the selected month. Matches the web app's `aAlocar`.
+  static double toBeBudgeted(AppData data, {String? asOf}) {
+    final cutoff = asOf ?? todayIso();
+    final allReceivedIncome = data.txns
+        .where((t) =>
+            t.date.compareTo(_globalFloorDate) > 0 &&
+            t.in_ > 0 &&
+            t.style != 'opening' &&
+            t.date.compareTo(cutoff) <= 0)
+        .fold(0.0, (a, t) => a + t.in_);
+
+    var allAllocations = 0.0;
+    data.budgets.forEach((month, cats) {
+      if (month.compareTo(_globalFloorMonth) <= 0) return;
+      allAllocations += cats.values.fold(0.0, (a, b) => a + b);
+    });
+
+    return allReceivedIncome - allAllocations;
+  }
+
+  /// Web's `autoGenerateRecurring()`: when the user switches to [month],
+  /// copy forward any recurring/fixed/salary/critical transaction from the
+  /// *previous* month, shifting its date one month ahead (day clamped to
+  /// the new month's last day). Skips a description already present in
+  /// [month], and any description explicitly removed from it via
+  /// `data.skipRecurring`. Returns only the new rows to add — callers are
+  /// responsible for persisting them.
+  static List<Txn> autoGenerateRecurringTxns(AppData data, String month) {
+    final parts = month.split('-');
+    final cy = int.parse(parts[0]);
+    final cmo = int.parse(parts[1]);
+    final prevMo = cmo == 1 ? 12 : cmo - 1;
+    final prevY = cmo == 1 ? cy - 1 : cy;
+    final prevMonth = '$prevY-${prevMo.toString().padLeft(2, '0')}';
+
+    final recFromPrev = data.txns.where((t) =>
+        t.date.startsWith(prevMonth) &&
+        (t.recurring ||
+            t.style == 'fixed' ||
+            t.style == 'salary' ||
+            t.style == 'critical') &&
+        t.style != 'opening');
+
+    final skip = data.skipRecurring[month] ?? const [];
+    var nextId = data.txns.isEmpty
+        ? 1
+        : data.txns.map((t) => t.id).reduce((a, b) => a > b ? a : b) + 1;
+
+    final generated = <Txn>[];
+    for (final t in recFromPrev) {
+      if (data.txns.any((x) => x.date.startsWith(month) && x.desc == t.desc)) {
+        continue;
+      }
+      if (skip.contains(t.desc)) continue;
+
+      final dParts = t.date.split('-');
+      final y = int.parse(dParts[0]);
+      final mo = int.parse(dParts[1]);
+      final d = int.parse(dParts[2]);
+      final nextMo = mo == 12 ? 1 : mo + 1;
+      final nextY = mo == 12 ? y + 1 : y;
+      final lastDay = DateTime(nextY, nextMo + 1, 0).day;
+      final day = d < lastDay ? d : lastDay;
+      final nextDate =
+          '$nextY-${nextMo.toString().padLeft(2, '0')}-${day.toString().padLeft(2, '0')}';
+      final nextDateMonth = nextDate.substring(0, 7);
+      if (!data.months.contains(nextDateMonth)) continue;
+
+      generated.add(t.copyWith(
+        id: nextId++,
+        date: nextDate,
+        cleared: false,
+        locked: false,
+      ));
+    }
+    return generated;
+  }
+
   /// Spending for [cat] in [month] as shown by the Reflect tab's Spending
   /// Breakdown — distinct from Budget's `spentForCategory`: this one uses
   /// raw outflow (not net of refunds), excludes 'opening' rows, and only

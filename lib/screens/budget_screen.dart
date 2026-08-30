@@ -9,6 +9,7 @@ import '../utils/formatters.dart';
 import '../widgets/category_detail_sheet.dart';
 import '../widgets/month_picker.dart';
 import '../widgets/move_money_sheet.dart';
+import '../widgets/summary_cards.dart';
 import '../widgets/sync_button.dart';
 
 class BudgetScreen extends StatelessWidget {
@@ -42,6 +43,27 @@ class BudgetScreen extends StatelessWidget {
             onSelect: (m) => appState.selectMonth(m),
             onAddMonth: () => appState.addNextMonth(),
           ),
+          SummaryCards(cards: [
+            SummaryCardData(
+              label: 'A Alocar',
+              value: Calculations.toBeBudgeted(data),
+              signedColor: true,
+            ),
+            SummaryCardData(
+              label: 'Total Orçado',
+              value: Calculations.totalBudgeted(data, month),
+            ),
+            SummaryCardData(
+              label: 'Total Gasto',
+              value: Calculations.totalSpent(data, month).abs(),
+              redBelowThreshold: double.infinity,
+            ),
+            SummaryCardData(
+              label: 'Total Disponível',
+              value: Calculations.totalAvailable(data, month),
+              signedColor: true,
+            ),
+          ]),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
             child: Row(

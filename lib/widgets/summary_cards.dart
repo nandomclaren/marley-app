@@ -17,12 +17,19 @@ class SummaryCardData {
   /// value-based coloring.
   final double? redBelowThreshold;
 
+  /// Colors the value green when positive, red when negative, and leaves
+  /// it neutral near zero — matches the web app's `.pos`/`.neg` classes on
+  /// header cards like "A Alocar" and "Total Disponível". Ignored when
+  /// [redBelowThreshold] is also set (that takes priority).
+  final bool signedColor;
+
   const SummaryCardData({
     required this.label,
     required this.value,
     this.subtitle,
     this.dangerCard = false,
     this.redBelowThreshold,
+    this.signedColor = false,
   });
 }
 
@@ -72,7 +79,13 @@ class _Card extends StatelessWidget {
         ? (data.value < data.redBelowThreshold!
             ? MarleyColors.red(brightness)
             : MarleyColors.accent)
-        : null;
+        : data.signedColor
+            ? (data.value < -0.005
+                ? MarleyColors.red(brightness)
+                : data.value > 0.005
+                    ? MarleyColors.green(brightness)
+                    : null)
+            : null;
 
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 12),
