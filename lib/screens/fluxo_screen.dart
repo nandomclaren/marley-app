@@ -44,8 +44,11 @@ class _FluxoScreenState extends State<FluxoScreen> {
           monthTxns.where((t) => t.desc.toLowerCase().contains(q)).toList();
     }
 
+    // Web app's futureRows: latest date at the top, soonest at the bottom
+    // — right next to today's entries — so tomorrow's transaction is the
+    // first thing visible when the "PRÓXIMOS" toggle is opened.
     final future = monthTxns.where((t) => t.date.compareTo(today) > 0).toList()
-      ..sort((a, b) => a.date.compareTo(b.date));
+      ..sort((a, b) => b.date.compareTo(a.date));
     final past = monthTxns.where((t) => t.date.compareTo(today) <= 0).toList()
       ..sort((a, b) => b.date.compareTo(a.date));
 

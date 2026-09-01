@@ -89,10 +89,12 @@ class _CategoryDetailSheetState extends State<CategoryDetailSheet> {
     final today = todayIso();
     final allMonthTxns = data.txns.where(
         (t) => t.cat == widget.category && monthOf(t.date) == widget.month);
+    // Same ordering as Fluxo's "PRÓXIMOS" list: latest date on top, soonest
+    // at the bottom, next to today's transactions.
     final futureTxns = allMonthTxns
         .where((t) => t.date.compareTo(today) > 0)
         .toList()
-      ..sort((a, b) => a.date.compareTo(b.date));
+      ..sort((a, b) => b.date.compareTo(a.date));
     final pastTxns = allMonthTxns
         .where((t) => t.date.compareTo(today) <= 0)
         .toList()

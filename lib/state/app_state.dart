@@ -42,7 +42,7 @@ class AppState extends ChangeNotifier {
   SyncStatus syncStatus = SyncStatus.idle;
   String? syncError;
 
-  // The remote's `_lastModified` as of the last time this session actually
+  // The remote's `_lastModified` as of the last time this *device* actually
   // looked at it (pull or push) — NOT the same as `_data.lastModified`,
   // which only reflects our own edits. Comparing against this (rather than
   // just "is local newer than remote") is what lets us tell "remote hasn't
@@ -51,6 +51,15 @@ class AppState extends ChangeNotifier {
   // timestamp. Mirrors the same fix applied on the web app after a stale
   // local timestamp caused it to silently overwrite a week of Flutter-app
   // data with older web data.
+  //
+  // Persisted (via StorageService.saveLastSyncedTs), not just held in
+  // memory: it has to survive an app restart. It used to live in memory
+  // only, which meant it reset to 0 on every cold start — so the very
+  // first sync of each new session almost always saw `remote > 0 (the
+  // reset value)` and treated that as "remote moved since we last looked",
+  // popping the conflict dialog even when remote and local were byte
+  // identical. Seeded from storage in `init()`; use `_setLastSyncedTs` to
+  // change it so every update stays persisted too.
   int _lastSyncedTs = 0;
 
   // Never push from a background/lifecycle hook before this session has
@@ -101,6 +110,11 @@ class AppState extends ChangeNotifier {
       // Best-effort; fall back to the in-memory default and let sync
       // (below) recover from the Gist if local storage is unavailable.
     }
+    try {
+      _lastSyncedTs = await _storage.loadLastSyncedTs() ?? 0;
+    } catch (_) {
+      _lastSyncedTs = 0;
+    }
     _pickInitialMonth();
     notifyListeners();
     await trySync();
@@ -125,6 +139,20 @@ class AppState extends ChangeNotifier {
   // ---------------------------------------------------------------------
   // Sync
   // ---------------------------------------------------------------------
+
+  /// Updates [_lastSyncedTs] and persists it right away — it has to survive
+  /// an app restart (see the field doc), not just this session, or every
+  /// cold start would look exactly like a genuine conflict the moment the
+  /// remote timestamp is nonzero, even when nothing actually diverged.
+  Future<void> _setLastSyncedTs(int ts) async {
+    _lastSyncedTs = ts;
+    try {
+      await _storage.saveLastSyncedTs(ts);
+    } catch (_) {
+      // Best-effort; worst case a future cold start re-shows one conflict
+      // dialog it could have avoided.
+    }
+  }
 
   /// Manual sync (button, and once on app start): always fetches the
   /// remote first, then decides:
@@ -162,17 +190,21 @@ class AppState extends ChangeNotifier {
 
         if (remote == null) {
           await gistSync.pushData(_data);
-          _lastSyncedTs = _data.lastModified;
+          await _setLastSyncedTs(_data.lastModified);
         } else if (remote.lastModified > _data.lastModified) {
           _data = remote;
           await _storage.save(_data);
           _ensureSelectedMonthValid();
-          _lastSyncedTs = remote.lastModified;
+          await _setLastSyncedTs(remote.lastModified);
+        } else if (remote.lastModified == _data.lastModified) {
+          // Byte-identical states (most cold starts, once this device has
+          // synced before): nothing to reconcile or push.
+          await _setLastSyncedTs(remote.lastModified);
         } else if (remote.lastModified > _lastSyncedTs) {
           pendingConflict = SyncConflict(remote: remote, local: _data);
         } else {
           await gistSync.pushData(_data);
-          _lastSyncedTs = _data.lastModified;
+          await _setLastSyncedTs(_data.lastModified);
         }
         syncError = null;
         syncStatus = SyncStatus.idle;
@@ -207,7 +239,7 @@ class AppState extends ChangeNotifier {
     pendingConflict = null;
     try {
       await gistSync.pushData(_data);
-      _lastSyncedTs = _data.lastModified;
+      await _setLastSyncedTs(_data.lastModified);
       syncError = null;
       syncStatus = SyncStatus.idle;
     } catch (e) {
@@ -226,7 +258,7 @@ class AppState extends ChangeNotifier {
     _data = remote;
     await _storage.save(_data);
     _ensureSelectedMonthValid();
-    _lastSyncedTs = remote.lastModified;
+    await _setLastSyncedTs(remote.lastModified);
     notifyListeners();
   }
 
@@ -246,7 +278,7 @@ class AppState extends ChangeNotifier {
         return; // someone else moved the remote; let a manual sync sort it out
       }
       await gistSync.pushData(_data);
-      _lastSyncedTs = _data.lastModified;
+      await _setLastSyncedTs(_data.lastModified);
     } catch (_) {
       // Best-effort; the next manual sync will surface any real problem.
     }

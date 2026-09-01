@@ -202,4 +202,56 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Compra agendada'), findsOneWidget);
   });
+
+  group('Fluxo future transactions ordering', () {
+    testWidgets(
+        'latest future date is listed above the soonest one, next to today',
+        (tester) async {
+      await tester.pumpWidget(const MarleyApp());
+      await tester.pumpAndSettle();
+
+      final element = tester.element(find.byType(MaterialApp));
+      final appState = Provider.of<AppState>(element, listen: false);
+      final currentMonth = monthOf(todayIso());
+      final lateDate = lastDayOfMonth(currentMonth);
+      final soonDate =
+          toIso(parseIso(todayIso()).add(const Duration(days: 1)));
+      if (monthOf(soonDate) != currentMonth || soonDate == lateDate) {
+        // Too close to month-end to have two distinct future dates this
+        // month — skip rather than flake.
+        return;
+      }
+
+      // ignore: unawaited_futures
+      appState.addTxn(Txn(
+        id: 1,
+        date: soonDate,
+        desc: 'Amanhã',
+        acct: 'Revolut',
+        out: 10,
+        in_: 0,
+      ));
+      // ignore: unawaited_futures
+      appState.addTxn(Txn(
+        id: 2,
+        date: lateDate,
+        desc: 'Fim do mês',
+        acct: 'Revolut',
+        out: 20,
+        in_: 0,
+      ));
+      for (var i = 0; i < 5; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+
+      final toggle = find.textContaining('PRÓXIMOS — 2 agendados');
+      expect(toggle, findsOneWidget);
+      await tester.tap(toggle);
+      await tester.pumpAndSettle();
+
+      final laterY = tester.getTopLeft(find.text('Fim do mês')).dy;
+      final soonerY = tester.getTopLeft(find.text('Amanhã')).dy;
+      expect(laterY, lessThan(soonerY));
+    });
+  });
 }

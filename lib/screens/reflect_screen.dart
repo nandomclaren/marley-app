@@ -270,7 +270,10 @@ class _IncomeVsSpendingChart extends StatelessWidget {
           alignment: BarChartAlignment.spaceAround,
           gridData: const FlGridData(show: false),
           borderData: FlBorderData(show: false),
-          barTouchData: BarTouchData(enabled: true),
+          barTouchData: BarTouchData(
+            enabled: true,
+            touchTooltipData: _barTooltipData(),
+          ),
           titlesData: FlTitlesData(
             leftTitles:
                 const AxisTitles(sideTitles: SideTitles(showTitles: false)),
@@ -361,6 +364,7 @@ class _NetWorthSection extends StatelessWidget {
               borderData: FlBorderData(show: false),
               barTouchData: BarTouchData(
                 enabled: true,
+                touchTooltipData: _barTooltipData(),
                 touchCallback: (event, response) {
                   if (!event.isInterestedForInteractions) return;
                   final index = response?.spot?.touchedBarGroupIndex;
@@ -483,6 +487,18 @@ class _AgeOfMoneyChart extends StatelessWidget {
           maxY: maxY,
           gridData: const FlGridData(show: false),
           borderData: FlBorderData(show: false),
+          lineTouchData: LineTouchData(
+            touchTooltipData: LineTouchTooltipData(
+              getTooltipColor: (touchedSpot) => Colors.black87,
+              getTooltipItems: (touchedSpots) => touchedSpots
+                  .map((s) => LineTooltipItem(
+                        '${s.y.round()} dias',
+                        const TextStyle(
+                            color: Colors.white, fontWeight: FontWeight.bold),
+                      ))
+                  .toList(),
+            ),
+          ),
           titlesData: FlTitlesData(
             leftTitles:
                 const AxisTitles(sideTitles: SideTitles(showTitles: false)),
@@ -524,6 +540,21 @@ class _AgeOfMoneyChart extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Fixes fl_chart's default bar tooltip, which colors its text after the
+/// touched rod itself (e.g. a translucent purple on the Net Worth chart's
+/// unselected bars) on a dark background — nearly unreadable. A plain
+/// dark-background/white-text tooltip stays legible regardless of the
+/// rod's own color.
+BarTouchTooltipData _barTooltipData() {
+  return BarTouchTooltipData(
+    getTooltipColor: (group) => Colors.black87,
+    getTooltipItem: (group, groupIndex, rod, rodIndex) => BarTooltipItem(
+      formatEur(rod.toY),
+      const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+    ),
+  );
 }
 
 int _asFlex(double value) {

@@ -5,12 +5,32 @@ import 'package:marley/models/app_data.dart';
 import 'package:marley/state/app_state.dart';
 
 /// Never touches SharedPreferences, so these tests don't depend on a
-/// platform channel being mocked.
+/// platform channel being mocked. Both boxes are plain in-memory slots
+/// rather than fields on the instance so tests can simulate an app
+/// restart: build a second `_NoopStorage` pointed at the same boxes and a
+/// fresh `AppState` on top of it, and see whether the persisted values
+/// survived — exactly what `SharedPreferences` would do for real.
 class _NoopStorage extends StorageService {
+  _NoopStorage({List<int?>? lastSyncedTsBox, List<AppData?>? dataBox})
+      : _lastSyncedTsBox = lastSyncedTsBox ?? [null],
+        _dataBox = dataBox ?? [null];
+
+  final List<int?> _lastSyncedTsBox;
+  final List<AppData?> _dataBox;
+
   @override
-  Future<AppData?> load() async => null;
+  Future<AppData?> load() async => _dataBox[0];
   @override
-  Future<void> save(AppData data) async {}
+  Future<void> save(AppData data) async {
+    _dataBox[0] = data;
+  }
+
+  @override
+  Future<int?> loadLastSyncedTs() async => _lastSyncedTsBox[0];
+  @override
+  Future<void> saveLastSyncedTs(int ts) async {
+    _lastSyncedTsBox[0] = ts;
+  }
 }
 
 /// Stands in for the network: lets tests control exactly what "the server"
@@ -91,6 +111,26 @@ void main() {
 
       expect(fake.pushCount, 1);
       expect(appState.pendingConflict, isNull);
+    });
+
+    test(
+        'byte-identical remote and local is never a conflict, even on a '
+        'fresh session that never synced before', () async {
+      // Reproduces the false-positive that used to pop the conflict dialog
+      // on every single cold start: `_lastSyncedTs` starts at 0 for a
+      // brand-new AppState, and back when the only check was
+      // `remote.lastModified > _lastSyncedTs`, any nonzero remote ts (i.e.
+      // basically always) looked like "the remote moved since we last
+      // looked" — even when remote and local were the exact same data.
+      final fake = _FakeGistSync();
+      final appState = AppState(storage: _NoopStorage(), gistSync: fake);
+      await appState.updateBalances(const Balances(rev: 42)); // local moves
+      fake.remoteData = _dataAt(appState.data.lastModified); // ...and so did "the server", to the exact same value
+
+      await appState.trySync();
+
+      expect(appState.pendingConflict, isNull);
+      expect(fake.pushCount, 0); // already identical, nothing to push
     });
 
     test('flags a conflict instead of guessing when both sides diverged',
@@ -188,6 +228,43 @@ void main() {
       await appState.pushIfDirty();
 
       expect(fake.pushCount, 1);
+    });
+  });
+
+  group('_lastSyncedTs survives an app restart', () {
+    test(
+        'an offline edit made after a confirmed sync still pushes cleanly '
+        'after the app is relaunched', () async {
+      final lastSyncedTsBox = <int?>[null];
+      final dataBox = <AppData?>[null];
+
+      final fake1 = _FakeGistSync()..remoteData = _dataAt(500);
+      final appState1 = AppState(
+        storage:
+            _NoopStorage(lastSyncedTsBox: lastSyncedTsBox, dataBox: dataBox),
+        gistSync: fake1,
+      );
+      await appState1.trySync(); // confirmed sync point: local == remote == 500
+
+      await appState1
+          .updateBalances(const Balances(rev: 7)); // offline edit, unsynced
+
+      // "Restart": brand-new AppState/GistSyncService, storage backed by
+      // the same in-memory boxes — mirrors what SharedPreferences actually
+      // does across a real app relaunch. Without persisting
+      // `_lastSyncedTs` across that boundary, this used to reset to 0 and
+      // make the untouched remote (500) look like it had moved since the
+      // last known sync point, popping a conflict dialog for no reason.
+      final fake2 = _FakeGistSync()..remoteData = _dataAt(500);
+      final appState2 = AppState(
+        storage:
+            _NoopStorage(lastSyncedTsBox: lastSyncedTsBox, dataBox: dataBox),
+        gistSync: fake2,
+      );
+      await appState2.init();
+
+      expect(appState2.pendingConflict, isNull);
+      expect(fake2.pushCount, 1); // the offline edit gets pushed, not blocked
     });
   });
 }
