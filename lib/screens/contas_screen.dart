@@ -7,6 +7,7 @@ import '../utils/calculations.dart';
 import '../utils/formatters.dart';
 import '../widgets/add_edit_transaction_sheet.dart';
 import '../widgets/reconcile_sheet.dart';
+import '../widgets/summary_cards.dart';
 import '../widgets/sync_button.dart';
 import '../widgets/transaction_tile.dart';
 
@@ -46,9 +47,20 @@ class _ContasScreenState extends State<ContasScreen> {
       visible = visible.where((t) => t.date.compareTo(today) <= 0).toList();
     }
     final displayList = visible.reversed.toList();
-    final currentBalance = acctTxns.isEmpty
-        ? Calculations.openingBalanceForAccount(data.balances, _acct)
-        : balanceAfter[acctTxns.last.id]!;
+
+    // "Saldo atual" used to be the ledger's running total including every
+    // future-dated and never-cleared transaction — nothing like what the
+    // bank actually shows, and nowhere near the reconcile flow's number
+    // (which is opening + only what's cleared/locked up to today). Web's
+    // Contas header never shows that raw running total either: it shows
+    // these three instead, so the reconcile flow's number now always
+    // matches one of the cards on screen.
+    final workingBal =
+        Calculations.workingBalanceForAccount(data, _acct, asOf: today);
+    final clearedBal =
+        Calculations.clearedBalanceForAccount(data, _acct, asOf: today);
+    final unclearedNet =
+        Calculations.unclearedNetForAccount(data, _acct, asOf: today);
 
     return Scaffold(
       appBar: AppBar(
@@ -68,21 +80,22 @@ class _ContasScreenState extends State<ContasScreen> {
               onSelectionChanged: (s) => setState(() => _acct = s.first),
             ),
           ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text('Saldo atual',
-                    style: Theme.of(context).textTheme.bodyMedium),
-                Text(
-                  formatEur(currentBalance),
-                  style: const TextStyle(
-                      fontWeight: FontWeight.w700, fontSize: 18),
-                ),
-              ],
+          SummaryCards(cards: [
+            SummaryCardData(
+              label: 'Working Balance',
+              value: workingBal,
+              signedColor: true,
             ),
-          ),
+            SummaryCardData(
+              label: '✓ Cleared',
+              value: clearedBal,
+            ),
+            SummaryCardData(
+              label: 'Uncleared',
+              value: unclearedNet,
+              signedColor: true,
+            ),
+          ]),
           SwitchListTile(
             dense: true,
             title: const Text('Mostrar próximos'),

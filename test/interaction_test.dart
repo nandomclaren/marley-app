@@ -54,7 +54,7 @@ void main() {
 
     await tester.tap(find.text('Contas'));
     await tester.pumpAndSettle();
-    expect(find.text('Saldo atual'), findsOneWidget);
+    expect(find.text('Working Balance'), findsOneWidget);
   });
 
   testWidgets('tapping a Budget category opens its detail sheet',

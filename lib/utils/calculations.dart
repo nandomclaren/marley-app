@@ -417,6 +417,33 @@ class Calculations {
     return start + sum;
   }
 
+  /// Net of everything on [acct] up to [asOf] (today) that hasn't been
+  /// cleared or locked yet. Matches the web app's Contas header
+  /// "Uncleared" card.
+  static double unclearedNetForAccount(AppData data, String acct,
+      {String? asOf}) {
+    final cutoff = asOf ?? todayIso();
+    return data.txns
+        .where((t) =>
+            t.acct == acct &&
+            t.style != 'opening' &&
+            !t.cleared &&
+            !t.locked &&
+            t.date.compareTo(cutoff) <= 0)
+        .fold(0.0, (a, t) => a + t.net);
+  }
+
+  /// The web app's Contas header "Working Balance" card: opening balance
+  /// plus everything that has actually happened on [acct] by [asOf]
+  /// (today) — cleared or not. Deliberately excludes future-dated
+  /// transactions, unlike the ledger's running balance: those don't move
+  /// the account until their date arrives.
+  static double workingBalanceForAccount(AppData data, String acct,
+      {String? asOf}) {
+    return clearedBalanceForAccount(data, acct, asOf: asOf) +
+        unclearedNetForAccount(data, acct, asOf: asOf);
+  }
+
   // ---------------------------------------------------------------------
   // Age of Money (FIFO)
   // ---------------------------------------------------------------------
