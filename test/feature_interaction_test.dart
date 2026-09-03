@@ -7,6 +7,7 @@ import 'package:marley/main.dart';
 import 'package:marley/models/transaction.dart';
 import 'package:marley/state/app_state.dart';
 import 'package:marley/utils/formatters.dart';
+import 'package:marley/widgets/summary_cards.dart';
 import 'package:marley/widgets/transaction_tile.dart';
 
 void main() {
@@ -151,6 +152,35 @@ void main() {
     expect(find.text('Reconciliar Revolut'), findsOneWidget);
     expect(find.text('Esse valor bate com o saldo real do banco?'),
         findsOneWidget);
+  });
+
+  testWidgets(
+      'Contas Cleared/Uncleared card swipes between the two instead of '
+      'showing a separate row', (tester) async {
+    await tester.pumpWidget(const MarleyApp());
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Contas'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Working Balance'), findsOneWidget);
+    expect(find.text('Cleared'), findsOneWidget);
+    // No leading icon glyph on the label — just the plain word.
+    expect(find.text('✓ Cleared'), findsNothing);
+    expect(find.text('Uncleared'), findsNothing);
+
+    await tester.drag(
+        find.byType(SwipeableStatCard), const Offset(-300, 0));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Uncleared'), findsOneWidget);
+    expect(find.text('Cleared'), findsNothing);
+
+    await tester.drag(find.byType(SwipeableStatCard), const Offset(300, 0));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Cleared'), findsOneWidget);
+    expect(find.text('Uncleared'), findsNothing);
   });
 
   testWidgets(

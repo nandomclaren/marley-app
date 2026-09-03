@@ -80,22 +80,39 @@ class _ContasScreenState extends State<ContasScreen> {
               onSelectionChanged: (s) => setState(() => _acct = s.first),
             ),
           ),
-          SummaryCards(cards: [
-            SummaryCardData(
-              label: 'Working Balance',
-              value: workingBal,
-              signedColor: true,
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            child: IntrinsicHeight(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Expanded(
+                    child: StatCard(
+                      data: SummaryCardData(
+                        label: 'Working Balance',
+                        value: workingBal,
+                        signedColor: true,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  // Cleared and Uncleared share one card slot — swipe to
+                  // flip between them — instead of Uncleared getting its
+                  // own row stretched across the full width.
+                  Expanded(
+                    child: SwipeableStatCard(pages: [
+                      SummaryCardData(label: 'Cleared', value: clearedBal),
+                      SummaryCardData(
+                        label: 'Uncleared',
+                        value: unclearedNet,
+                        signedColor: true,
+                      ),
+                    ]),
+                  ),
+                ],
+              ),
             ),
-            SummaryCardData(
-              label: '✓ Cleared',
-              value: clearedBal,
-            ),
-            SummaryCardData(
-              label: 'Uncleared',
-              value: unclearedNet,
-              signedColor: true,
-            ),
-          ]),
+          ),
           SwitchListTile(
             dense: true,
             title: const Text('Mostrar próximos'),
