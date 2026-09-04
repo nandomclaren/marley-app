@@ -49,8 +49,11 @@ class _FluxoScreenState extends State<FluxoScreen> {
     // first thing visible when the "PRÓXIMOS" toggle is opened.
     final future = monthTxns.where((t) => t.date.compareTo(today) > 0).toList()
       ..sort((a, b) => b.date.compareTo(a.date));
+    // Within each day: pending rows (needing your attention) float above
+    // settled ones — a fresh manual entry above other pending rows, a
+    // just-cleared/reconciled row above older settled ones.
     final past = monthTxns.where((t) => t.date.compareTo(today) <= 0).toList()
-      ..sort((a, b) => b.date.compareTo(a.date));
+      ..sort(Calculations.compareForDailyAttention);
 
     final ndmp = Calculations.ndmp(data);
     final showNdmp = month == currentRealMonth;
@@ -143,6 +146,7 @@ class _FluxoScreenState extends State<FluxoScreen> {
                 for (final t in past)
                   TransactionTile(
                     txn: t,
+                    highlightPending: true,
                     onTap: () =>
                         AddEditTransactionSheet.show(context, existing: t),
                   ),

@@ -180,6 +180,10 @@ class _AddEditTransactionSheetState extends State<AddEditTransactionSheet> {
       cleared: widget.existing?.cleared ?? false,
       locked: widget.existing?.locked ?? false,
       cat: _cat,
+      // Editing never changes when/how a txn was added or last settled —
+      // those are only ever touched by addTxn/toggleCleared/reconcile.
+      addedManually: widget.existing?.addedManually ?? false,
+      settledAt: widget.existing?.settledAt,
     );
     if (_isEditing) {
       appState.updateTxn(txn);

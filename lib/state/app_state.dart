@@ -311,7 +311,11 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> addTxn(Txn t) async {
-    _data = _data.copyWith(txns: [..._data.txns, t]);
+    // Went through this method == the user typed it in via "+" — forced
+    // here rather than trusting the caller, so it's never possible to add
+    // a txn that doesn't count as manually-added.
+    _data = _data.copyWith(
+        txns: [..._data.txns, t.copyWith(addedManually: true)]);
     _touch();
     await _persist();
     _autoSyncTxns();
@@ -436,7 +440,12 @@ class AppState extends ChangeNotifier {
       }
     }
     if (txn == null || txn.locked) return;
-    await updateTxn(txn.copyWith(cleared: !txn.cleared));
+    final nowCleared = !txn.cleared;
+    await updateTxn(nowCleared
+        ? txn.copyWith(
+            cleared: true,
+            settledAt: DateTime.now().millisecondsSinceEpoch)
+        : txn.copyWith(cleared: false, clearSettledAt: true));
   }
 
   /// Reconcile [acct]: locks every cleared-but-unlocked transaction on it,
@@ -450,9 +459,10 @@ class AppState extends ChangeNotifier {
     double? realBalance,
     required double clearedBalanceBefore,
   }) async {
+    final now = DateTime.now().millisecondsSinceEpoch;
     var txns = _data.txns.map((t) {
       if (t.acct == acct && t.cleared && !t.locked) {
-        return t.copyWith(cleared: false, locked: true);
+        return t.copyWith(cleared: false, locked: true, settledAt: now);
       }
       return t;
     }).toList();
@@ -473,6 +483,7 @@ class AppState extends ChangeNotifier {
               'encontrado ${formatEur(clearedBalanceBefore)})',
           cleared: false,
           locked: true,
+          settledAt: now,
         ),
       ];
     }

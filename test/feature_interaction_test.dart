@@ -284,4 +284,45 @@ void main() {
       expect(laterY, lessThan(soonerY));
     });
   });
+
+  group('Fluxo daily attention ordering', () {
+    testWidgets(
+        'a pending row renders above an already-settled row from the same '
+        'day', (tester) async {
+      await tester.pumpWidget(const MarleyApp());
+      await tester.pumpAndSettle();
+
+      final element = tester.element(find.byType(MaterialApp));
+      final appState = Provider.of<AppState>(element, listen: false);
+      final today = todayIso();
+
+      // ignore: unawaited_futures
+      appState.addTxn(Txn(
+        id: 1,
+        date: today,
+        desc: 'Já resolvida',
+        acct: 'Revolut',
+        out: 10,
+        in_: 0,
+        cleared: true,
+        settledAt: 1,
+      ));
+      // ignore: unawaited_futures
+      appState.addTxn(Txn(
+        id: 2,
+        date: today,
+        desc: 'Ainda pendente',
+        acct: 'Revolut',
+        out: 5,
+        in_: 0,
+      ));
+      for (var i = 0; i < 5; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+
+      final pendingY = tester.getTopLeft(find.text('Ainda pendente')).dy;
+      final settledY = tester.getTopLeft(find.text('Já resolvida')).dy;
+      expect(pendingY, lessThan(settledY));
+    });
+  });
 }

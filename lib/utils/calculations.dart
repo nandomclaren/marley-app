@@ -445,6 +445,41 @@ class Calculations {
   }
 
   // ---------------------------------------------------------------------
+  // Fluxo day ordering
+  // ---------------------------------------------------------------------
+
+  /// Orders Fluxo's past/today rows within a day so the ones that still
+  /// need your attention are never buried:
+  ///  1. Date, newest first (unchanged from before).
+  ///  2. Pending (not cleared, not locked) before settled rows.
+  ///  3. Among pending rows: typed in via "+" first, then most recently
+  ///     added first (higher id) — a fresh entry never gets lost in the
+  ///     middle of the day's list.
+  ///  4. Among settled rows: most recently cleared/reconciled first; rows
+  ///     predating `settledAt` (or never explicitly settled — e.g. an
+  ///     already-locked opening/seed row) sort last within the group.
+  static int compareForDailyAttention(Txn a, Txn b) {
+    final dateCmp = b.date.compareTo(a.date);
+    if (dateCmp != 0) return dateCmp;
+
+    final aSettled = a.cleared || a.locked;
+    final bSettled = b.cleared || b.locked;
+    if (aSettled != bSettled) return aSettled ? 1 : -1;
+
+    if (!aSettled) {
+      if (a.addedManually != b.addedManually) {
+        return a.addedManually ? -1 : 1;
+      }
+      return b.id.compareTo(a.id);
+    }
+
+    final aTs = a.settledAt ?? -1;
+    final bTs = b.settledAt ?? -1;
+    if (aTs != bTs) return bTs.compareTo(aTs);
+    return b.id.compareTo(a.id);
+  }
+
+  // ---------------------------------------------------------------------
   // Age of Money (FIFO)
   // ---------------------------------------------------------------------
 

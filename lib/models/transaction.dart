@@ -15,6 +15,16 @@ class Txn {
   final bool locked;
   final String cat;
 
+  // Flutter-only fields (not part of the web app's schema — harmlessly
+  // ignored there, same as `skipRecurring`). Both drive Fluxo's day-level
+  // attention ordering: a transaction the user typed in through "+" sorts
+  // ahead of one that showed up some other way (recurring generation,
+  // import, ...) among still-pending rows; `settledAt` is when it was last
+  // marked cleared or locked, so the most recently resolved row floats to
+  // the top of the settled ones instead of them all looking equally old.
+  final bool addedManually;
+  final int? settledAt;
+
   const Txn({
     required this.id,
     required this.date,
@@ -29,6 +39,8 @@ class Txn {
     this.cleared = false,
     this.locked = false,
     this.cat = '',
+    this.addedManually = false,
+    this.settledAt,
   });
 
   double get net => in_ - out;
@@ -47,6 +59,12 @@ class Txn {
     bool? cleared,
     bool? locked,
     String? cat,
+    bool? addedManually,
+    int? settledAt,
+    // `settledAt` is nullable, so the usual `param ?? this.field` pattern
+    // can't express "clear it back to null" (toggling a txn back to
+    // uncleared). Pass this instead of `settledAt` to force it to null.
+    bool clearSettledAt = false,
   }) {
     return Txn(
       id: id ?? this.id,
@@ -62,6 +80,8 @@ class Txn {
       cleared: cleared ?? this.cleared,
       locked: locked ?? this.locked,
       cat: cat ?? this.cat,
+      addedManually: addedManually ?? this.addedManually,
+      settledAt: clearSettledAt ? null : (settledAt ?? this.settledAt),
     );
   }
 
@@ -84,6 +104,8 @@ class Txn {
       cleared: j['cleared'] as bool? ?? false,
       locked: j['locked'] as bool? ?? false,
       cat: j['cat'] as String? ?? '',
+      addedManually: j['addedManually'] as bool? ?? false,
+      settledAt: (j['settledAt'] as num?)?.toInt(),
     );
   }
 
@@ -102,6 +124,8 @@ class Txn {
       'cleared': cleared,
       'locked': locked,
       'cat': cat,
+      'addedManually': addedManually,
+      'settledAt': settledAt,
     };
   }
 }

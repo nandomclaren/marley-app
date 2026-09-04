@@ -28,6 +28,15 @@ class MarleyColors {
       b == Brightness.dark ? bgCardDark : bgCardLight;
 }
 
+/// Background/stripe for a Fluxo row that still needs action (not cleared,
+/// not locked) — reuses the same warm hue as the existing `warning` style
+/// tint rather than inventing a new color, since it means the same thing:
+/// "look at this".
+Color pendingHighlightBg(Brightness b) =>
+    b == Brightness.dark ? const Color(0xFF3A331A) : const Color(0xFFFDF3D8);
+Color pendingHighlightStripe(Brightness b) =>
+    b == Brightness.dark ? const Color(0xFFF2C14E) : const Color(0xFFB8860B);
+
 /// Row background tints keyed by `Txn.style`.
 Color? rowColorForStyle(String style, Brightness brightness) {
   final dark = brightness == Brightness.dark;
