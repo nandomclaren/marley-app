@@ -81,6 +81,15 @@ class _SyncSettingsSheetState extends State<SyncSettingsSheet> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                Text('Opções', style: Theme.of(context).textTheme.titleLarge),
+                const SizedBox(height: 12),
+                const _HomeScreenSetting(),
+                const SizedBox(height: 4),
+                const _AttentionGroupSetting(),
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 16),
+                  child: Divider(height: 1),
+                ),
                 Text('Sincronização (GitHub Gist)',
                     style: Theme.of(context).textTheme.titleLarge),
                 const SizedBox(height: 4),
@@ -114,6 +123,45 @@ class _SyncSettingsSheetState extends State<SyncSettingsSheet> {
                 ),
               ],
             ),
+    );
+  }
+}
+
+class _HomeScreenSetting extends StatelessWidget {
+  const _HomeScreenSetting();
+
+  @override
+  Widget build(BuildContext context) {
+    final appState = context.watch<AppState>();
+    return Row(
+      children: [
+        const Expanded(child: Text('Tela inicial')),
+        SegmentedButton<String>(
+          segments: const [
+            ButtonSegment(value: 'fluxo', label: Text('Fluxo')),
+            ButtonSegment(value: 'budget', label: Text('Budget')),
+          ],
+          selected: {appState.homeScreen},
+          onSelectionChanged: (s) => appState.setHomeScreen(s.first),
+        ),
+      ],
+    );
+  }
+}
+
+class _AttentionGroupSetting extends StatelessWidget {
+  const _AttentionGroupSetting();
+
+  @override
+  Widget build(BuildContext context) {
+    final appState = context.watch<AppState>();
+    return SwitchListTile(
+      contentPadding: EdgeInsets.zero,
+      title: const Text('Categoria "Attention!" no Budget'),
+      subtitle: const Text(
+          'Agrupa no topo as subcategorias estouradas ou com meta pendente'),
+      value: appState.attentionGroupEnabled,
+      onChanged: (v) => appState.setAttentionGroupEnabled(v),
     );
   }
 }

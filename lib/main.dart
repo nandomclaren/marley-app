@@ -60,6 +60,9 @@ class HomeShell extends StatefulWidget {
 
 class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   int _tabIndex = 0;
+  // Once the user taps a tab themselves, stop following AppState.homeScreen
+  // for the rest of this session — their manual choice wins.
+  bool _userChangedTab = false;
 
   static const _screens = [
     FluxoScreen(),
@@ -90,13 +93,24 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
+    final appState = context.watch<AppState>();
+    // AppState.homeScreen loads asynchronously (SharedPreferences), so this
+    // keeps following it — harmlessly re-applying 'fluxo' meanwhile — until
+    // either it settles on the real value or the user picks a tab
+    // themselves, whichever comes first.
+    if (!_userChangedTab) {
+      _tabIndex = appState.homeScreen == 'budget' ? 1 : 0;
+    }
     return Scaffold(
       body: SafeArea(
         child: IndexedStack(index: _tabIndex, children: _screens),
       ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _tabIndex,
-        onDestinationSelected: (i) => setState(() => _tabIndex = i),
+        onDestinationSelected: (i) => setState(() {
+          _tabIndex = i;
+          _userChangedTab = true;
+        }),
         destinations: const [
           NavigationDestination(
               icon: Icon(Icons.receipt_long_outlined),

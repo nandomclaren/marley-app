@@ -12,8 +12,36 @@ import '../widgets/move_money_sheet.dart';
 import '../widgets/summary_cards.dart';
 import '../widgets/sync_button.dart';
 
-class BudgetScreen extends StatelessWidget {
+class BudgetScreen extends StatefulWidget {
   const BudgetScreen({super.key});
+
+  @override
+  State<BudgetScreen> createState() => _BudgetScreenState();
+}
+
+class _BudgetScreenState extends State<BudgetScreen> {
+  // Categories currently red/yellow "linger" in the Attention group for
+  // 300ms after they stop being red/yellow, instead of snapping straight
+  // back to their origin group — same delayed-reorder idea as Fluxo's
+  // pending/settled split.
+  final Set<String> _pendingRemoval = {};
+  Set<String> _lastAttentionSet = {};
+
+  void _syncAttentionTransitions(Set<String> current) {
+    final leaving = _lastAttentionSet.difference(current);
+    for (final cat in leaving) {
+      if (_pendingRemoval.contains(cat)) continue;
+      _pendingRemoval.add(cat);
+      Future.delayed(const Duration(milliseconds: 300), () {
+        if (!mounted) return;
+        setState(() => _pendingRemoval.remove(cat));
+      });
+    }
+    // Re-entering Attention before the grace period ends cancels the
+    // pending removal — no flicker back down and immediately back up.
+    _pendingRemoval.removeWhere(current.contains);
+    _lastAttentionSet = current;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -21,6 +49,22 @@ class BudgetScreen extends StatelessWidget {
     final data = appState.data;
     final month = appState.selectedMonth;
     final brightness = Theme.of(context).brightness;
+
+    var displayedAttention = const <String>{};
+    if (appState.attentionGroupEnabled) {
+      final current = <String>{
+        for (final cat in kAllCategories)
+          if (Calculations.budgetStatusFor(data, cat, month) !=
+              BudgetCatStatus.ok)
+            cat,
+      };
+      _syncAttentionTransitions(current);
+      displayedAttention = current.union(_pendingRemoval);
+    } else if (_lastAttentionSet.isNotEmpty || _pendingRemoval.isNotEmpty) {
+      // Setting turned off — drop the grouping instantly, no lingering.
+      _lastAttentionSet = {};
+      _pendingRemoval.clear();
+    }
 
     return Scaffold(
       appBar: AppBar(
@@ -94,27 +138,51 @@ class BudgetScreen extends StatelessWidget {
           Expanded(
             child: ListView(
               children: [
-                for (final group in kCategoryGroups) ...[
+                if (displayedAttention.isNotEmpty) ...[
                   Container(
-                    color: group.color.withValues(
-                        alpha: brightness == Brightness.dark ? 0.16 : 0.08),
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    color: pendingHighlightBg(brightness),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 8),
                     child: Text(
-                      group.group,
+                      '⚠️ Attention!',
                       style: TextStyle(
                           fontWeight: FontWeight.w700,
-                          color: group.color,
+                          color: pendingHighlightStripe(brightness),
                           fontSize: 13),
                     ),
                   ),
-                  for (final cat in group.cats)
-                    _CategoryRow(
-                      category: cat,
-                      month: month,
-                      color: group.color,
-                    ),
+                  for (final cat in kAllCategories)
+                    if (displayedAttention.contains(cat))
+                      _CategoryRow(
+                        category: cat,
+                        month: month,
+                        color: colorForCategory(cat),
+                      ),
                 ],
+                for (final group in kCategoryGroups)
+                  if (group.cats.any((c) => !displayedAttention.contains(c)))
+                    ...[
+                    Container(
+                      color: group.color.withValues(
+                          alpha: brightness == Brightness.dark ? 0.16 : 0.08),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 8),
+                      child: Text(
+                        group.group,
+                        style: TextStyle(
+                            fontWeight: FontWeight.w700,
+                            color: group.color,
+                            fontSize: 13),
+                      ),
+                    ),
+                    for (final cat in group.cats)
+                      if (!displayedAttention.contains(cat))
+                        _CategoryRow(
+                          category: cat,
+                          month: month,
+                          color: group.color,
+                        ),
+                  ],
                 const SizedBox(height: 24),
               ],
             ),
@@ -142,10 +210,14 @@ class _CategoryRow extends StatelessWidget {
     final budgeted = data.budgets[month]?[category] ?? 0;
     final spent = Calculations.spentForCategory(data, month, category);
     final available = Calculations.availableFor(data, category, month);
+    final status = Calculations.budgetStatusFor(data, category, month);
 
-    final availableColor = available < 0
-        ? MarleyColors.red(brightness)
-        : (available == 0 ? Colors.grey : MarleyColors.green(brightness));
+    final availableColor = switch (status) {
+      BudgetCatStatus.overspent => MarleyColors.red(brightness),
+      BudgetCatStatus.underfunded => pendingHighlightStripe(brightness),
+      BudgetCatStatus.ok =>
+        available == 0 ? Colors.grey : MarleyColors.green(brightness),
+    };
 
     return InkWell(
       onTap: () =>

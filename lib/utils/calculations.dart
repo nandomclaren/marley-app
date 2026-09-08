@@ -3,6 +3,11 @@ import '../models/app_data.dart';
 import '../models/transaction.dart';
 import 'formatters.dart';
 
+/// A budget category's health for the current month, matching the web
+/// app's bar coloring: overspent (red) takes priority over underfunded
+/// (yellow, goal-only); everything else is `ok`.
+enum BudgetCatStatus { ok, underfunded, overspent }
+
 /// Pure functions implementing Marley's financial logic. Ported 1:1 from the
 /// web app (`index.html`) — do not "simplify" the math without re-checking
 /// against the original.
@@ -200,6 +205,33 @@ class Calculations {
   static double totalAvailable(AppData data, String month) {
     return kAllCategories.fold(
         0.0, (a, cat) => a + availableFor(data, cat, month));
+  }
+
+  /// Matches the web app's budget-bar status exactly (`isOverspent` /
+  /// `isUnderfunded` in `renderBudget()`): overspent takes priority over
+  /// underfunded, and underfunded only applies to a category that actually
+  /// has a goal — a category with no goal is never yellow, no matter how
+  /// little is budgeted for it.
+  static BudgetCatStatus budgetStatusFor(AppData data, String cat, String month) {
+    final carry = carryoverFor(data, cat, month);
+    final budgeted = data.budgets[month]?[cat] ?? 0;
+    final spent = spentForCategory(data, month, cat);
+    final disp = carry + budgeted - spent;
+    if (disp < -0.005) return BudgetCatStatus.overspent;
+
+    final goal = data.goals[cat];
+    var goalTarget = 0.0;
+    if (goal != null) {
+      if (goal.type == 'monthly') {
+        goalTarget = goal.target;
+      } else if (goal.type == 'target_date') {
+        goalTarget = goal.monthlyContrib ?? 0;
+      }
+    }
+    if (goalTarget > 0 && (carry + budgeted) < goalTarget - 0.005) {
+      return BudgetCatStatus.underfunded;
+    }
+    return BudgetCatStatus.ok;
   }
 
   static const String _globalFloorDate = '2026-02-28';

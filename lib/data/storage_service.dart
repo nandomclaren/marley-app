@@ -10,6 +10,8 @@ import '../models/app_data.dart';
 class StorageService {
   static const _key = 'marley_data';
   static const _lastSyncedTsKey = 'marley_last_synced_ts';
+  static const _homeScreenKey = 'marley_home_screen';
+  static const _attentionGroupKey = 'marley_attention_group_enabled';
 
   Future<AppData?> load() async {
     final prefs = await SharedPreferences.getInstance();
@@ -40,5 +42,27 @@ class StorageService {
   Future<void> saveLastSyncedTs(int ts) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt(_lastSyncedTsKey, ts);
+  }
+
+  /// Which tab opens first: 'fluxo' or 'budget'. Purely a device
+  /// preference (not part of `AppData`), so it never touches the Gist.
+  Future<String?> loadHomeScreen() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_homeScreenKey);
+  }
+
+  Future<void> saveHomeScreen(String screen) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_homeScreenKey, screen);
+  }
+
+  Future<bool?> loadAttentionGroupEnabled() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_attentionGroupKey);
+  }
+
+  Future<void> saveAttentionGroupEnabled(bool enabled) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_attentionGroupKey, enabled);
   }
 }

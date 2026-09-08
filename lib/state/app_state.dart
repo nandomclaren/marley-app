@@ -97,6 +97,31 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  // Device preferences (not part of AppData — never touch the Gist).
+  // Defaults match today's behavior: Fluxo first, no Attention grouping.
+  String homeScreen = 'fluxo'; // 'fluxo' | 'budget'
+  bool attentionGroupEnabled = false;
+
+  Future<void> setHomeScreen(String screen) async {
+    homeScreen = screen;
+    notifyListeners();
+    try {
+      await _storage.saveHomeScreen(screen);
+    } catch (_) {
+      // Best-effort; worst case it reopens on the old tab next launch.
+    }
+  }
+
+  Future<void> setAttentionGroupEnabled(bool enabled) async {
+    attentionGroupEnabled = enabled;
+    notifyListeners();
+    try {
+      await _storage.saveAttentionGroupEnabled(enabled);
+    } catch (_) {
+      // Best-effort; worst case the toggle reverts next launch.
+    }
+  }
+
   bool _initialized = false;
   Future<void> init() async {
     if (_initialized) return;
@@ -114,6 +139,16 @@ class AppState extends ChangeNotifier {
       _lastSyncedTs = await _storage.loadLastSyncedTs() ?? 0;
     } catch (_) {
       _lastSyncedTs = 0;
+    }
+    try {
+      homeScreen = await _storage.loadHomeScreen() ?? 'fluxo';
+    } catch (_) {
+      homeScreen = 'fluxo';
+    }
+    try {
+      attentionGroupEnabled = await _storage.loadAttentionGroupEnabled() ?? false;
+    } catch (_) {
+      attentionGroupEnabled = false;
     }
     _pickInitialMonth();
     notifyListeners();

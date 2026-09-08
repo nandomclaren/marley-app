@@ -4,7 +4,9 @@ import 'package:provider/provider.dart';
 import '../data/categories.dart';
 import '../models/transaction.dart';
 import '../state/app_state.dart';
+import '../utils/calculations.dart';
 import '../utils/formatters.dart';
+import 'category_impact_pill.dart';
 import 'category_picker_sheet.dart';
 
 enum _Direction { out, in_ }
@@ -166,6 +168,14 @@ class _AddEditTransactionSheetState extends State<AddEditTransactionSheet> {
     final amount =
         double.tryParse(_amountController.text.replaceAll(',', '.')) ?? 0;
     final appState = context.read<AppState>();
+    final month = monthOf(toIso(_date));
+    // Snapshot before the mutation so the impact pill (below) can show
+    // what actually changed. addTxn/updateTxn run synchronously up to
+    // their first `await` (the local-storage write), so `appState.data`
+    // already reflects the edit by the time control returns here even
+    // though neither call is awaited.
+    final before =
+        _cat.isEmpty ? 0.0 : Calculations.availableFor(appState.data, _cat, month);
     final txn = Txn(
       id: widget.existing?.id ?? appState.nextTxnId(),
       date: toIso(_date),
@@ -189,6 +199,13 @@ class _AddEditTransactionSheetState extends State<AddEditTransactionSheet> {
       appState.updateTxn(txn);
     } else {
       appState.addTxn(txn);
+    }
+    if (_cat.isNotEmpty) {
+      final after = Calculations.availableFor(appState.data, _cat, month);
+      if ((after - before).abs() > 0.005) {
+        CategoryImpactPill.show(context,
+            category: _cat, before: before, after: after);
+      }
     }
     Navigator.of(context).pop();
   }
