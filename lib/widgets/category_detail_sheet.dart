@@ -57,6 +57,14 @@ class _CategoryDetailSheetState extends State<CategoryDetailSheet> {
   }
 
   Future<void> _editGoal() async {
+    // Unlike _saveBudget, this can be reached while the budget field still
+    // has focus (keyboard up). Pushing showDialog's route while the IME is
+    // still mid-close-animation can race with it on Android and the dialog
+    // never visibly appears, so dismiss the keyboard and let that animation
+    // settle first.
+    FocusScope.of(context).unfocus();
+    await Future.delayed(const Duration(milliseconds: 120));
+    if (!mounted) return;
     final appState = context.read<AppState>();
     final existing = appState.data.goals[widget.category];
     final result = await showDialog<Goal?>(
