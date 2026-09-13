@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:marley/data/gist_sync_service.dart';
 import 'package:marley/data/storage_service.dart';
 import 'package:marley/models/app_data.dart';
+import 'package:marley/models/transaction.dart';
 import 'package:marley/state/app_state.dart';
 
 /// Never touches SharedPreferences, so these tests don't depend on a
@@ -70,6 +71,32 @@ AppData _dataAt(int ts) {
   );
 }
 
+/// Like [_dataAt] but with [total] transactions, [locked] of them reconciled
+/// -- for exercising the locked-count regression guard, which `_dataAt`'s
+/// always-empty txn list can't.
+AppData _dataWithLocked(int ts, {required int total, required int locked}) {
+  const month = '2026-08';
+  return AppData(
+    lastModified: ts,
+    months: const [month],
+    balances: const Balances(),
+    txns: [
+      for (var i = 0; i < total; i++)
+        Txn(
+          id: i + 1,
+          date: '2026-08-01',
+          desc: 'txn $i',
+          acct: 'Revolut',
+          out: 1,
+          in_: 0,
+          locked: i < locked,
+        ),
+    ],
+    budgets: const {month: {}},
+    goals: const {},
+  );
+}
+
 void main() {
   group('trySync conflict detection', () {
     test('pushes when there is nothing on the server yet', () async {
@@ -94,6 +121,69 @@ void main() {
       expect(appState.data.lastModified, 2000);
       expect(fake.pushCount, 0);
       expect(appState.pendingConflict, isNull);
+    });
+
+    test(
+        'adopts remote outright when it is newer and locked count only grew',
+        () async {
+      final local = _dataWithLocked(1000, total: 20, locked: 15);
+      final remote = _dataWithLocked(2000, total: 25, locked: 20);
+      final fake = _FakeGistSync()..remoteData = remote;
+      final appState = AppState(
+        storage: _NoopStorage(dataBox: [local]),
+        gistSync: fake,
+      );
+
+      await appState.init();
+
+      expect(appState.data.lastModified, 2000);
+      expect(appState.pendingConflict, isNull);
+      expect(fake.pushCount, 0);
+    });
+
+    test(
+        'a small, tolerable drop in locked count still adopts remote outright',
+        () async {
+      final local = _dataWithLocked(1000, total: 20, locked: 20);
+      // Drop of 3 -- within lockedCountDropTolerance, e.g. someone manually
+      // un-reconciled a couple of rows on the other device.
+      final remote = _dataWithLocked(2000, total: 20, locked: 17);
+      final fake = _FakeGistSync()..remoteData = remote;
+      final appState = AppState(
+        storage: _NoopStorage(dataBox: [local]),
+        gistSync: fake,
+      );
+
+      await appState.init();
+
+      expect(appState.data.lastModified, 2000);
+      expect(appState.pendingConflict, isNull);
+    });
+
+    test(
+        'treats a suspicious drop in locked transactions as a conflict '
+        'instead of silently adopting a "newer" remote', () async {
+      // Reproduces the 2026-09-13 incident: a device with stale local data
+      // (only 5 reconciled) pushed a copy that carries a *newer* timestamp
+      // (because it was just edited) and *more* transactions overall (25 vs
+      // 20), so neither the raw-timestamp check nor the file-size guard
+      // would catch it -- but it lost 15 reconciled transactions the other
+      // device already knew about.
+      final local = _dataWithLocked(1000, total: 20, locked: 20);
+      final remote = _dataWithLocked(2000, total: 25, locked: 5);
+      final fake = _FakeGistSync()..remoteData = remote;
+      final appState = AppState(
+        storage: _NoopStorage(dataBox: [local]),
+        gistSync: fake,
+      );
+
+      await appState.init();
+
+      expect(appState.pendingConflict, isNotNull);
+      expect(appState.pendingConflict!.remote.lastModified, 2000);
+      // Local must not have been silently overwritten.
+      expect(appState.data.lastModified, 1000);
+      expect(fake.pushCount, 0);
     });
 
     test('pushes when the remote has not moved since our last known sync point',

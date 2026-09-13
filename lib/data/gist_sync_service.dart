@@ -7,6 +7,22 @@ import '../models/app_data.dart';
 
 const _dataFileName = 'marley-data.json';
 
+/// How many fewer `locked` (reconciled) transactions than the previous copy
+/// is tolerated before treating a sync as suspicious. Small enough that a
+/// user manually un-reconciling a couple of rows never trips it, but big
+/// enough to catch a stale device silently overwriting real reconciliation
+/// work with an outdated local cache — exactly what happened on
+/// 2026-09-13: a device that hadn't synced in days pushed a "newer" (by
+/// timestamp) copy that was actually missing over a week of reconciliation,
+/// and neither the raw-timestamp comparison nor the file-size guard caught
+/// it because the payload had *more* transactions overall, just fewer
+/// reconciled ones.
+const lockedCountDropTolerance = 5;
+
+bool isSuspiciousLockedDrop({required int previous, required int incoming}) {
+  return incoming < previous - lockedCountDropTolerance;
+}
+
 class GistSyncBlockedException implements Exception {
   final String message;
   GistSyncBlockedException(this.message);
@@ -115,6 +131,24 @@ class GistSyncService {
         'Push bloqueado: novo conteúdo tem $newSize bytes, menos de 70% do '
         'tamanho anterior ($prevSize bytes). Isso pode indicar perda de dados.',
       );
+    }
+
+    // The size guard above only catches a payload that shrank a lot -- it
+    // missed the 2026-09-13 incident because the stale copy had *more*
+    // transactions overall (new ones added on top of an outdated cache), so
+    // the file didn't shrink enough to trip it. Compare actual reconciled
+    // (`locked`) counts against what's really on the server right now.
+    final previous = await fetchRemote();
+    if (previous != null) {
+      final prevLocked = previous.txns.where((t) => t.locked).length;
+      final newLocked = data.txns.where((t) => t.locked).length;
+      if (isSuspiciousLockedDrop(previous: prevLocked, incoming: newLocked)) {
+        throw GistSyncBlockedException(
+          'Push bloqueado: a quantidade de transações reconciliadas caiu de '
+          '$prevLocked para $newLocked. Isso pode indicar que este aparelho '
+          'está com dados desatualizados (ex.: não sincroniza há um tempo).',
+        );
+      }
     }
 
     final hourSlot = DateTime.now().toUtc().hour.toString().padLeft(2, '0');

@@ -227,10 +227,25 @@ class AppState extends ChangeNotifier {
           await gistSync.pushData(_data);
           await _setLastSyncedTs(_data.lastModified);
         } else if (remote.lastModified > _data.lastModified) {
-          _data = remote;
-          await _storage.save(_data);
-          _ensureSelectedMonthValid();
-          await _setLastSyncedTs(remote.lastModified);
+          // "Remote is newer" by timestamp alone isn't proof it's actually
+          // more complete: a device that hasn't synced in a while can bump
+          // its own timestamp just by editing on top of stale data, then
+          // have that stale-but-"newer" copy pushed by another device and
+          // adopted here without question. A big drop in reconciled
+          // (`locked`) transactions is the tell (see the 2026-09-13
+          // incident) -- route that through the conflict dialog instead of
+          // silently overwriting local.
+          final localLocked = _data.txns.where((t) => t.locked).length;
+          final remoteLocked = remote.txns.where((t) => t.locked).length;
+          if (isSuspiciousLockedDrop(
+              previous: localLocked, incoming: remoteLocked)) {
+            pendingConflict = SyncConflict(remote: remote, local: _data);
+          } else {
+            _data = remote;
+            await _storage.save(_data);
+            _ensureSelectedMonthValid();
+            await _setLastSyncedTs(remote.lastModified);
+          }
         } else if (remote.lastModified == _data.lastModified) {
           // Byte-identical states (most cold starts, once this device has
           // synced before): nothing to reconcile or push.
