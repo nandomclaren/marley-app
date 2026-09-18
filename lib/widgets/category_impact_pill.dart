@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
+import '../utils/calculations.dart';
 import '../utils/formatters.dart';
 
 /// A YNAB-style toast: rises from the bottom of the screen, shows a
@@ -16,6 +17,7 @@ class CategoryImpactPill {
     required String category,
     required double before,
     required double after,
+    required BudgetCatStatus status,
   }) {
     final overlay = Overlay.of(context, rootOverlay: true);
     late OverlayEntry entry;
@@ -24,6 +26,7 @@ class CategoryImpactPill {
         category: category,
         before: before,
         after: after,
+        status: status,
         onDone: () => entry.remove(),
       ),
     );
@@ -35,12 +38,14 @@ class _PillView extends StatefulWidget {
   final String category;
   final double before;
   final double after;
+  final BudgetCatStatus status;
   final VoidCallback onDone;
 
   const _PillView({
     required this.category,
     required this.before,
     required this.after,
+    required this.status,
     required this.onDone,
   });
 
@@ -111,13 +116,17 @@ class _PillViewState extends State<_PillView> with TickerProviderStateMixin {
   Widget build(BuildContext context) {
     final brightness = Theme.of(context).brightness;
     final scheme = Theme.of(context).colorScheme;
-    final isDown = widget.after < widget.before - 0.005;
-    final isUp = widget.after > widget.before + 0.005;
-    final valueColor = isDown
-        ? MarleyColors.red(brightness)
-        : isUp
-            ? MarleyColors.green(brightness)
-            : scheme.onInverseSurface;
+    // Same coloring as the Budget screen's category rows: green when the
+    // category is in good shape, amber when underfunded (goal not yet met),
+    // red when overspent -- so the pill reads as "here's where this
+    // category stands", not just "the number went up or down".
+    final valueColor = switch (widget.status) {
+      BudgetCatStatus.overspent => MarleyColors.red(brightness),
+      BudgetCatStatus.underfunded => pendingHighlightStripe(brightness),
+      BudgetCatStatus.ok => widget.after == 0
+          ? scheme.onInverseSurface
+          : MarleyColors.green(brightness),
+    };
 
     return Positioned(
       left: 16,

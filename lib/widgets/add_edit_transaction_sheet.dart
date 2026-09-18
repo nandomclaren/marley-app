@@ -203,8 +203,9 @@ class _AddEditTransactionSheetState extends State<AddEditTransactionSheet> {
     if (_cat.isNotEmpty) {
       final after = Calculations.availableFor(appState.data, _cat, month);
       if ((after - before).abs() > 0.005) {
+        final status = Calculations.budgetStatusFor(appState.data, _cat, month);
         CategoryImpactPill.show(context,
-            category: _cat, before: before, after: after);
+            category: _cat, before: before, after: after, status: status);
       }
     }
     Navigator.of(context).pop();
