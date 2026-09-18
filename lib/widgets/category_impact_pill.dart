@@ -17,7 +17,8 @@ class CategoryImpactPill {
     required String category,
     required double before,
     required double after,
-    required BudgetCatStatus status,
+    required BudgetCatStatus beforeStatus,
+    required BudgetCatStatus afterStatus,
   }) {
     final overlay = Overlay.of(context, rootOverlay: true);
     late OverlayEntry entry;
@@ -26,7 +27,8 @@ class CategoryImpactPill {
         category: category,
         before: before,
         after: after,
-        status: status,
+        beforeStatus: beforeStatus,
+        afterStatus: afterStatus,
         onDone: () => entry.remove(),
       ),
     );
@@ -38,14 +40,16 @@ class _PillView extends StatefulWidget {
   final String category;
   final double before;
   final double after;
-  final BudgetCatStatus status;
+  final BudgetCatStatus beforeStatus;
+  final BudgetCatStatus afterStatus;
   final VoidCallback onDone;
 
   const _PillView({
     required this.category,
     required this.before,
     required this.after,
-    required this.status,
+    required this.beforeStatus,
+    required this.afterStatus,
     required this.onDone,
   });
 
@@ -112,21 +116,35 @@ class _PillViewState extends State<_PillView> with TickerProviderStateMixin {
     super.dispose();
   }
 
+  // Same coloring as the Budget screen's category rows: green when the
+  // category is in good shape, amber when underfunded (goal not yet met),
+  // red when overspent -- so the pill reads as "here's where this category
+  // stands", not just "the number went up or down".
+  Color _colorFor(BudgetCatStatus status, double value, Brightness brightness,
+      ColorScheme scheme) {
+    return switch (status) {
+      BudgetCatStatus.overspent => MarleyColors.red(brightness),
+      BudgetCatStatus.underfunded => pendingHighlightStripe(brightness),
+      BudgetCatStatus.ok =>
+        value == 0 ? scheme.onInverseSurface : MarleyColors.green(brightness),
+    };
+  }
+
   @override
   Widget build(BuildContext context) {
     final brightness = Theme.of(context).brightness;
     final scheme = Theme.of(context).colorScheme;
-    // Same coloring as the Budget screen's category rows: green when the
-    // category is in good shape, amber when underfunded (goal not yet met),
-    // red when overspent -- so the pill reads as "here's where this
-    // category stands", not just "the number went up or down".
-    final valueColor = switch (widget.status) {
-      BudgetCatStatus.overspent => MarleyColors.red(brightness),
-      BudgetCatStatus.underfunded => pendingHighlightStripe(brightness),
-      BudgetCatStatus.ok => widget.after == 0
-          ? scheme.onInverseSurface
-          : MarleyColors.green(brightness),
-    };
+    // The color fades from `beforeStatus` to `afterStatus` in lockstep with
+    // the number counting down/up, using the same eased progress -- so the
+    // pill tells one coherent story (e.g. "10 in the green, counting down,
+    // landing on -5 in the red") instead of jumping straight to the final
+    // color while still showing the old number.
+    final progress = Curves.easeOut.transform(_countCtrl.value);
+    final beforeColor =
+        _colorFor(widget.beforeStatus, widget.before, brightness, scheme);
+    final afterColor =
+        _colorFor(widget.afterStatus, widget.after, brightness, scheme);
+    final valueColor = Color.lerp(beforeColor, afterColor, progress)!;
 
     return Positioned(
       left: 16,

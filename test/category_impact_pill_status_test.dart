@@ -17,8 +17,7 @@ Future<void> _pumpFor(WidgetTester tester, Duration total,
   }
 }
 
-Future<Color> _showAndReadValueColor(
-    WidgetTester tester, BudgetCatStatus status) async {
+Future<BuildContext> _pumpHarness(WidgetTester tester) async {
   late BuildContext capturedContext;
   await tester.pumpWidget(MaterialApp(
     home: Scaffold(
@@ -28,51 +27,86 @@ Future<Color> _showAndReadValueColor(
       }),
     ),
   ));
+  return capturedContext;
+}
 
-  CategoryImpactPill.show(capturedContext,
-      category: 'Test', before: 10, after: 20, status: status);
-  await tester.pump();
-  // Past rise (400ms) + hold-old (300ms) + count (550ms) = 1250ms, safely
-  // into hold-new (1250-1650ms) where the count animation has finished and
-  // settled on `after`, well before the fall (1650-2000ms) starts.
-  await _pumpFor(tester, const Duration(milliseconds: 1400));
-
-  final valueText = tester.widget<Text>(find.text(formatEur(20)));
-  final color = valueText.style!.color!;
-
-  // Drain the rest of the sequence (fall + onDone) so no Future.delayed
-  // timer is left pending when the test tears down the widget tree.
-  await _pumpFor(tester, const Duration(milliseconds: 700));
-  return color;
+Color _valueColor(WidgetTester tester, double displayedValue) {
+  final valueText = tester.widget<Text>(find.text(formatEur(displayedValue)));
+  return valueText.style!.color!;
 }
 
 void main() {
-  testWidgets('overspent category renders the pill value in red',
-      (tester) async {
-    final color =
-        await _showAndReadValueColor(tester, BudgetCatStatus.overspent);
-    final brightness = Theme.of(
-            tester.element(find.byType(Scaffold)))
-        .brightness;
-    expect(color, MarleyColors.red(brightness));
+  testWidgets(
+      'color starts as the before-status color while still showing the old '
+      'value (before the count animation starts)', (tester) async {
+    final context = await _pumpHarness(tester);
+    CategoryImpactPill.show(
+      context,
+      category: 'Forfaits Mobile',
+      before: 10,
+      after: -5,
+      beforeStatus: BudgetCatStatus.ok,
+      afterStatus: BudgetCatStatus.overspent,
+    );
+    await tester.pump();
+    // Rise (400ms) + partway into hold-old (300ms, ends at 700ms): the
+    // count hasn't started yet, so the displayed value is still `before`
+    // and the color must still read as "ok" (green), not jump to red early.
+    await _pumpFor(tester, const Duration(milliseconds: 500));
+
+    final brightness =
+        Theme.of(tester.element(find.byType(Scaffold))).brightness;
+    expect(_valueColor(tester, 10), MarleyColors.green(brightness));
+
+    // Drain the rest so no pending timer trips teardown.
+    await _pumpFor(tester, const Duration(milliseconds: 1600));
   });
 
-  testWidgets('underfunded category renders the pill value in amber',
+  testWidgets(
+      'color lands on the after-status color once the count animation '
+      'finishes (10 in the green counting down to -5 in the red)',
       (tester) async {
-    final color =
-        await _showAndReadValueColor(tester, BudgetCatStatus.underfunded);
-    final brightness = Theme.of(
-            tester.element(find.byType(Scaffold)))
-        .brightness;
-    expect(color, pendingHighlightStripe(brightness));
+    final context = await _pumpHarness(tester);
+    CategoryImpactPill.show(
+      context,
+      category: 'Forfaits Mobile',
+      before: 10,
+      after: -5,
+      beforeStatus: BudgetCatStatus.ok,
+      afterStatus: BudgetCatStatus.overspent,
+    );
+    await tester.pump();
+    // Past rise (400) + hold-old (300) + count (550) = 1250ms, safely into
+    // hold-new (1250-1650ms): the count has finished and settled on
+    // `after`, well before the fall (1650-2000ms) starts.
+    await _pumpFor(tester, const Duration(milliseconds: 1400));
+
+    final brightness =
+        Theme.of(tester.element(find.byType(Scaffold))).brightness;
+    expect(_valueColor(tester, -5), MarleyColors.red(brightness));
+
+    await _pumpFor(tester, const Duration(milliseconds: 700));
   });
 
-  testWidgets('ok category with a nonzero balance renders the pill value in green',
-      (tester) async {
-    final color = await _showAndReadValueColor(tester, BudgetCatStatus.ok);
-    final brightness = Theme.of(
-            tester.element(find.byType(Scaffold)))
-        .brightness;
-    expect(color, MarleyColors.green(brightness));
+  testWidgets(
+      'a category that stays underfunded before and after shows amber '
+      'throughout, not a fade between two different colors', (tester) async {
+    final context = await _pumpHarness(tester);
+    CategoryImpactPill.show(
+      context,
+      category: 'Vacances',
+      before: 50,
+      after: 60,
+      beforeStatus: BudgetCatStatus.underfunded,
+      afterStatus: BudgetCatStatus.underfunded,
+    );
+    await tester.pump();
+    await _pumpFor(tester, const Duration(milliseconds: 1400));
+
+    final brightness =
+        Theme.of(tester.element(find.byType(Scaffold))).brightness;
+    expect(_valueColor(tester, 60), pendingHighlightStripe(brightness));
+
+    await _pumpFor(tester, const Duration(milliseconds: 700));
   });
 }

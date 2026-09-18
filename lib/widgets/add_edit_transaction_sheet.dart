@@ -176,6 +176,9 @@ class _AddEditTransactionSheetState extends State<AddEditTransactionSheet> {
     // though neither call is awaited.
     final before =
         _cat.isEmpty ? 0.0 : Calculations.availableFor(appState.data, _cat, month);
+    final beforeStatus = _cat.isEmpty
+        ? BudgetCatStatus.ok
+        : Calculations.budgetStatusFor(appState.data, _cat, month);
     final txn = Txn(
       id: widget.existing?.id ?? appState.nextTxnId(),
       date: toIso(_date),
@@ -203,9 +206,16 @@ class _AddEditTransactionSheetState extends State<AddEditTransactionSheet> {
     if (_cat.isNotEmpty) {
       final after = Calculations.availableFor(appState.data, _cat, month);
       if ((after - before).abs() > 0.005) {
-        final status = Calculations.budgetStatusFor(appState.data, _cat, month);
-        CategoryImpactPill.show(context,
-            category: _cat, before: before, after: after, status: status);
+        final afterStatus =
+            Calculations.budgetStatusFor(appState.data, _cat, month);
+        CategoryImpactPill.show(
+          context,
+          category: _cat,
+          before: before,
+          after: after,
+          beforeStatus: beforeStatus,
+          afterStatus: afterStatus,
+        );
       }
     }
     Navigator.of(context).pop();
