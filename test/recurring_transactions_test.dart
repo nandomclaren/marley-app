@@ -319,6 +319,27 @@ void main() {
       expect(carriedOver.single.locked, isFalse);
     });
 
+    test(
+        'addNextMonth starts the new month with an empty budget, never '
+        "copying last month's amounts forward", () async {
+      final appState = AppState();
+      final baseMonth = appState.data.months.last;
+      await appState.setBudget(baseMonth, '🛒 Courses & Marché', 1200);
+      await appState.setBudget(baseMonth, '💸 Bail', 2800);
+
+      await appState.addNextMonth();
+
+      final nextMonth = appState.selectedMonth;
+      expect(nextMonth, isNot(baseMonth));
+      // A fresh month must never silently inherit budgeted amounts nobody
+      // actually assigned -- that's what inflated "A Alocar" for every
+      // month created ahead of time.
+      expect(appState.data.budgets[nextMonth], isEmpty);
+      // The month it copied from must be untouched.
+      expect(appState.data.budgets[baseMonth]?['🛒 Courses & Marché'], 1200);
+      expect(appState.data.budgets[baseMonth]?['💸 Bail'], 2800);
+    });
+
     test('deleting a recurring txn records a skip that survives regeneration',
         () async {
       final appState = AppState();

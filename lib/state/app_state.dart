@@ -466,7 +466,12 @@ class AppState extends ChangeNotifier {
     }
     final months = [..._data.months, next];
     final budgets = Map<String, Map<String, double>>.from(_data.budgets);
-    budgets[next] = Map<String, double>.from(_data.budgets[last] ?? {});
+    // A new month starts with nothing budgeted -- matches the web app's
+    // addMonth() (data.budgets[newM] = {}). Copying last month's amounts
+    // forward here used to silently inflate every category's "allocated"
+    // total (and thus "A Alocar") for months nobody had actually budgeted
+    // yet.
+    budgets[next] = {};
     _data = _data.copyWith(months: months, budgets: budgets);
     _touch();
     await _persist();
