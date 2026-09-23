@@ -237,19 +237,27 @@ class Calculations {
   static const String _globalFloorDate = '2026-02-28';
   static const String _globalFloorMonth = '2026-02';
 
-  /// Budget tab's "A Alocar" header card: total income actually received
-  /// (post-startup, up to today) minus everything ever allocated to a
-  /// budget category across every month — a global running total, not
-  /// scoped to the selected month. Matches the web app's `aAlocar`.
+  /// Budget tab's "A Alocar" header card: net of every transaction that
+  /// has *no* category (post-startup, up to today) minus everything ever
+  /// allocated to a budget category across every month — a global running
+  /// total, not scoped to the selected month.
+  ///
+  /// A transaction only ever counts once, in exactly one place: if it has
+  /// a category, it's accounted for entirely inside that category's
+  /// `availableFor` (via `spentForCategory`) and must NOT also move "A
+  /// Alocar" — otherwise the same euro reads as both "still unassigned"
+  /// and "already available in a category" at the same time. An
+  /// uncategorized transaction has nowhere else to be tracked, so it (and
+  /// only it) moves this number, income or expense alike.
   static double toBeBudgeted(AppData data, {String? asOf}) {
     final cutoff = asOf ?? todayIso();
-    final allReceivedIncome = data.txns
+    final uncategorizedNet = data.txns
         .where((t) =>
             t.date.compareTo(_globalFloorDate) > 0 &&
-            t.in_ > 0 &&
+            t.cat.isEmpty &&
             t.style != 'opening' &&
             t.date.compareTo(cutoff) <= 0)
-        .fold(0.0, (a, t) => a + t.in_);
+        .fold(0.0, (a, t) => a + t.in_ - t.out);
 
     var allAllocations = 0.0;
     data.budgets.forEach((month, cats) {
@@ -257,7 +265,7 @@ class Calculations {
       allAllocations += cats.values.fold(0.0, (a, b) => a + b);
     });
 
-    return allReceivedIncome - allAllocations;
+    return uncategorizedNet - allAllocations;
   }
 
   /// Web's `autoGenerateRecurring()`: when the user switches to [month],

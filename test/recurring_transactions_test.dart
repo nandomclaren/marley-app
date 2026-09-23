@@ -230,6 +230,65 @@ void main() {
 
       expect(Calculations.toBeBudgeted(data, asOf: '2026-03-10'), 3000);
     });
+
+    test(
+        'a categorized transaction never moves it -- only its own category, '
+        'income or expense alike', () async {
+      final data = _dataWith(
+        months: const ['2026-03'],
+        txns: const [
+          Txn(
+              id: 1,
+              date: '2026-03-01',
+              desc: 'Salário categorizado',
+              acct: 'Revolut',
+              out: 0,
+              in_: 3000,
+              cat: '💁🏻‍♂️ Nando'),
+          Txn(
+              id: 2,
+              date: '2026-03-05',
+              desc: 'Compra categorizada',
+              acct: 'Revolut',
+              out: 200,
+              in_: 0,
+              cat: '🛒 Courses'),
+        ],
+        budgets: const {},
+      );
+
+      // Both transactions are fully accounted for inside their own
+      // category (via spentForCategory) -- neither should also move "A
+      // Alocar", or the same euro would read as both "unassigned" and
+      // "already available in a category" at once.
+      expect(Calculations.toBeBudgeted(data, asOf: '2026-03-31'), 0);
+    });
+
+    test('an uncategorized expense reduces it, same as income raises it',
+        () async {
+      final data = _dataWith(
+        months: const ['2026-03'],
+        txns: const [
+          Txn(
+              id: 1,
+              date: '2026-03-01',
+              desc: 'Salário',
+              acct: 'Revolut',
+              out: 0,
+              in_: 3000),
+          Txn(
+              id: 2,
+              date: '2026-03-05',
+              desc: 'Saque sem categoria',
+              acct: 'Revolut',
+              out: 100,
+              in_: 0),
+        ],
+        budgets: const {},
+      );
+
+      expect(Calculations.toBeBudgeted(data, asOf: '2026-03-31'), 3000 - 100);
+    });
   });
 
   group('AppState wires recurring generation into month switching', () {
