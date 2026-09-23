@@ -233,6 +233,57 @@ void main() {
     expect(find.text('Compra agendada'), findsOneWidget);
   });
 
+  testWidgets(
+      'Contas "Esconder reconciliadas" hides locked/cleared rows from the '
+      'list only', (tester) async {
+    await tester.pumpWidget(const MarleyApp());
+    await tester.pumpAndSettle();
+
+    final element = tester.element(find.byType(MaterialApp));
+    final appState = Provider.of<AppState>(element, listen: false);
+    final today = todayIso();
+    // ignore: unawaited_futures
+    appState.addTxn(Txn(
+      id: 1,
+      date: today,
+      desc: 'Já reconciliado',
+      acct: 'Revolut',
+      out: 10,
+      in_: 0,
+      locked: true,
+    ));
+    // ignore: unawaited_futures
+    appState.addTxn(Txn(
+      id: 2,
+      date: today,
+      desc: 'Ainda pendente',
+      acct: 'Revolut',
+      out: 5,
+      in_: 0,
+    ));
+    for (var i = 0; i < 5; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+
+    await tester.tap(find.text('Contas'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Já reconciliado'), findsOneWidget);
+    expect(find.text('Ainda pendente'), findsOneWidget);
+
+    await tester.tap(find.text('Esconder reconciliadas'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Já reconciliado'), findsNothing);
+    expect(find.text('Ainda pendente'), findsOneWidget);
+
+    await tester.tap(find.text('Esconder reconciliadas'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Já reconciliado'), findsOneWidget);
+    expect(find.text('Ainda pendente'), findsOneWidget);
+  });
+
   group('Fluxo future transactions ordering', () {
     testWidgets(
         'latest future date is listed above the soonest one, next to today',

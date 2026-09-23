@@ -21,6 +21,11 @@ class ContasScreen extends StatefulWidget {
 class _ContasScreenState extends State<ContasScreen> {
   String _acct = kAccounts.first;
   bool _showFuture = true;
+  // Mirrors the web app's "👻 Cleared" ghost toggle: hides already
+  // cleared/locked rows from the list only (the header cards below always
+  // reflect the full account, unaffected by this). Resets on account
+  // switch, same as web.
+  bool _hideCleared = false;
 
   @override
   Widget build(BuildContext context) {
@@ -45,6 +50,9 @@ class _ContasScreenState extends State<ContasScreen> {
     var visible = acctTxns;
     if (!_showFuture) {
       visible = visible.where((t) => t.date.compareTo(today) <= 0).toList();
+    }
+    if (_hideCleared) {
+      visible = visible.where((t) => !t.cleared && !t.locked).toList();
     }
     final displayList = visible.reversed.toList();
 
@@ -77,7 +85,10 @@ class _ContasScreenState extends State<ContasScreen> {
                   ButtonSegment(value: a, label: Text(a))
               ],
               selected: {_acct},
-              onSelectionChanged: (s) => setState(() => _acct = s.first),
+              onSelectionChanged: (s) => setState(() {
+                _acct = s.first;
+                _hideCleared = false;
+              }),
             ),
           ),
           Padding(
@@ -118,6 +129,12 @@ class _ContasScreenState extends State<ContasScreen> {
             title: const Text('Mostrar próximos'),
             value: _showFuture,
             onChanged: (v) => setState(() => _showFuture = v),
+          ),
+          SwitchListTile(
+            dense: true,
+            title: const Text('Esconder reconciliadas'),
+            value: _hideCleared,
+            onChanged: (v) => setState(() => _hideCleared = v),
           ),
           const Divider(height: 1),
           Expanded(
