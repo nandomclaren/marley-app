@@ -108,6 +108,18 @@ class _CategoryDetailSheetState extends State<CategoryDetailSheet> {
         .toList()
       ..sort((a, b) => b.date.compareTo(a.date));
 
+    // Same transactions as `pastTxns`, summed by description (the
+    // autocomplete already keeps these consistent -- "Monoprix" always
+    // reads "Monoprix") so you can see where the money in this category
+    // actually went, not just a flat list of dated rows. Biggest expense
+    // first (most negative net).
+    final byDescription = <String, double>{};
+    for (final t in pastTxns) {
+      byDescription[t.desc] = (byDescription[t.desc] ?? 0) + t.net;
+    }
+    final descEntries = byDescription.entries.toList()
+      ..sort((a, b) => a.value.compareTo(b.value));
+
     return DraggableScrollableSheet(
       initialChildSize: 0.8,
       minChildSize: 0.5,
@@ -182,6 +194,14 @@ class _CategoryDetailSheetState extends State<CategoryDetailSheet> {
             Text('Transações do mês',
                 style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: 8),
+            if (descEntries.isNotEmpty) ...[
+              const Text('Por descrição',
+                  style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+              const SizedBox(height: 4),
+              for (final e in descEntries)
+                _descriptionRow(context, e.key, e.value, brightness),
+              const SizedBox(height: 12),
+            ],
             if (futureTxns.isNotEmpty) ...[
               ListTile(
                 contentPadding: EdgeInsets.zero,
@@ -205,6 +225,28 @@ class _CategoryDetailSheetState extends State<CategoryDetailSheet> {
           ],
         );
       },
+    );
+  }
+
+  Widget _descriptionRow(
+      BuildContext context, String desc, double net, Brightness brightness) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        children: [
+          Expanded(
+              child: Text(desc, maxLines: 1, overflow: TextOverflow.ellipsis)),
+          Text(
+            formatEurSigned(net),
+            style: TextStyle(
+              fontWeight: FontWeight.w700,
+              color: net < 0
+                  ? MarleyColors.red(brightness)
+                  : MarleyColors.green(brightness),
+            ),
+          ),
+        ],
+      ),
     );
   }
 

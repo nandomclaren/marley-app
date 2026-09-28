@@ -77,7 +77,9 @@ void main() {
     // Drill into the category -> opens CategoryDetailSheet.
     await tester.tap(find.text('🛒 Courses & Marché'));
     await tester.pumpAndSettle();
-    expect(find.text('Compra mes 1'), findsOneWidget);
+    // Appears twice: once in the sheet's "Por descrição" grouped summary,
+    // once in the flat per-transaction list below it.
+    expect(find.text('Compra mes 1'), findsWidgets);
     expect(find.widgetWithText(TextField, 'Orçado (€)'), findsOneWidget);
     Navigator.of(tester.element(find.widgetWithText(TextField, 'Orçado (€)')))
         .pop();
