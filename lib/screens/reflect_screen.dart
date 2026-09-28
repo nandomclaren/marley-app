@@ -8,6 +8,7 @@ import '../state/app_state.dart';
 import '../theme/app_theme.dart';
 import '../utils/calculations.dart';
 import '../utils/formatters.dart';
+import '../widgets/category_detail_sheet.dart';
 import '../widgets/sync_button.dart';
 
 /// '2026-02' is always excluded from Reflect — it was the app's startup
@@ -23,7 +24,6 @@ class ReflectScreen extends StatefulWidget {
 }
 
 class _ReflectScreenState extends State<ReflectScreen> {
-  String? _breakdownMonth;
   bool _breakdownExpanded = false;
   String? _netWorthMonth;
 
@@ -53,10 +53,14 @@ class _ReflectScreenState extends State<ReflectScreen> {
     }
 
     final last6 = _last6(eligible);
-    _breakdownMonth ??= (eligible.contains(appState.selectedMonth)
+    // Follows the same global month selector Budget/Fluxo use (matches the
+    // web app's chartMonth(), which just reads the shared `selectedMonth`)
+    // instead of freezing on whatever month was selected when this screen
+    // first built.
+    final breakdownMonth = eligible.contains(appState.selectedMonth)
         ? appState.selectedMonth
-        : eligible.last);
-    if (_isFebruary(_breakdownMonth!)) _breakdownMonth = eligible.last;
+        : eligible.last;
+    final breakdownIndex = eligible.indexOf(breakdownMonth);
     _netWorthMonth ??= last6.last;
 
     return Scaffold(
@@ -68,10 +72,36 @@ class _ReflectScreenState extends State<ReflectScreen> {
         children: [
           _SectionCard(
             title: 'Spending Breakdown',
-            subtitle: monthLabel(_breakdownMonth!),
+            subtitleWidget: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                IconButton(
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                  iconSize: 18,
+                  visualDensity: VisualDensity.compact,
+                  icon: const Icon(Icons.chevron_left),
+                  onPressed: breakdownIndex > 0
+                      ? () => appState.selectMonth(eligible[breakdownIndex - 1])
+                      : null,
+                ),
+                Text(monthLabel(breakdownMonth),
+                    style: Theme.of(context).textTheme.bodySmall),
+                IconButton(
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                  iconSize: 18,
+                  visualDensity: VisualDensity.compact,
+                  icon: const Icon(Icons.chevron_right),
+                  onPressed: breakdownIndex < eligible.length - 1
+                      ? () => appState.selectMonth(eligible[breakdownIndex + 1])
+                      : null,
+                ),
+              ],
+            ),
             child: _SpendingBreakdown(
               data: data,
-              month: _breakdownMonth!,
+              month: breakdownMonth,
               expanded: _breakdownExpanded,
               onToggle: () =>
                   setState(() => _breakdownExpanded = !_breakdownExpanded),
@@ -111,11 +141,16 @@ class _ReflectScreenState extends State<ReflectScreen> {
 
 class _SectionCard extends StatelessWidget {
   final String title;
-  final String subtitle;
+  final String? subtitle;
+  final Widget? subtitleWidget;
   final Widget child;
 
-  const _SectionCard(
-      {required this.title, required this.subtitle, required this.child});
+  const _SectionCard({
+    required this.title,
+    this.subtitle,
+    this.subtitleWidget,
+    required this.child,
+  }) : assert(subtitle != null || subtitleWidget != null);
 
   @override
   Widget build(BuildContext context) {
@@ -133,7 +168,8 @@ class _SectionCard extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(title, style: Theme.of(context).textTheme.titleMedium),
-              Text(subtitle, style: Theme.of(context).textTheme.bodySmall),
+              subtitleWidget ??
+                  Text(subtitle!, style: Theme.of(context).textTheme.bodySmall),
             ],
           ),
           const SizedBox(height: 12),
@@ -186,6 +222,12 @@ class _SpendingBreakdown extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        Text(formatEur(total),
+            style: Theme.of(context)
+                .textTheme
+                .headlineSmall
+                ?.copyWith(fontWeight: FontWeight.w800)),
+        const SizedBox(height: 12),
         ClipRRect(
           borderRadius: BorderRadius.circular(8),
           child: SizedBox(
@@ -208,8 +250,9 @@ class _SpendingBreakdown extends StatelessWidget {
         ),
         const SizedBox(height: 12),
         for (final e in shown)
-          _breakdownRow(
-              context, e.key, e.value, total, colorForCategory(e.key)),
+          _breakdownRow(context, e.key, e.value, total, colorForCategory(e.key),
+              onTap: () =>
+                  CategoryDetailSheet.show(context, category: e.key, month: month)),
         if (othersTotal != null && othersTotal > 0)
           _breakdownRow(context, 'Outros', othersTotal, total, Colors.grey),
         if (entries.length > 5)
@@ -222,9 +265,9 @@ class _SpendingBreakdown extends StatelessWidget {
   }
 
   Widget _breakdownRow(BuildContext context, String label, double value,
-      double total, Color color) {
+      double total, Color color, {VoidCallback? onTap}) {
     final pct = total == 0 ? 0.0 : (value / total * 100);
-    return Padding(
+    final row = Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
         children: [
@@ -244,6 +287,8 @@ class _SpendingBreakdown extends StatelessWidget {
         ],
       ),
     );
+    if (onTap == null) return row;
+    return InkWell(borderRadius: BorderRadius.circular(8), onTap: onTap, child: row);
   }
 }
 
