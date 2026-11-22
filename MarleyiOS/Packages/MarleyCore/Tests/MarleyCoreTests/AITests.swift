@@ -76,6 +76,10 @@ final class AIChatTests: XCTestCase {
         XCTAssertEqual(b["output_config"]?.objectValue?["effort"]?.stringValue, "medium")
         XCTAssertNotNil(b["cache_control"]); XCTAssertNil(b["thinking"]); XCTAssertNil(b["tool_choice"]); XCTAssertNil(b["temperature"])
         XCTAssertEqual(b["tools"]?.arrayValue?.compactMap { $0.objectValue?["name"]?.stringValue }, ["search_transactions", "propose_changes"])
+        // a API aceita no máximo 16 parâmetros anuláveis/union somando as ferramentas strict
+        let strictTools = b["tools"]!.arrayValue!.compactMap(\.objectValue).filter { $0["strict"]?.boolValue == true }
+        XCTAssertEqual(strictTools.compactMap { $0["name"]?.stringValue }, ["propose_changes"])
+        XCTAssertLessThanOrEqual(strictTools.map { JSON.serialize(.object($0)).components(separatedBy: "\"anyOf\"").count - 1 }.reduce(0, +), 16)
         let ctx = b["system"]!.arrayValue![1].objectValue!["text"]!.stringValue!
         XCTAssertTrue(ctx.contains("2|2026-11-02|Monoprix|Revolut|-80.00|🛒 Courses & Marché|L|"))
         XCTAssertFalse(ctx.contains("40|2026-06-10"))

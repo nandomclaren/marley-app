@@ -76,7 +76,7 @@ struct TxnEditor: View {
                     Section {
                         Button("Apagar transação", role: .destructive) { deleting = t }
                     } footer: {
-                        if t.locked { Text("Reconciliada com o banco 🔒") }
+                        if t.locked { Text("Reconciliada 🔒") }
                     }
                 }
             }

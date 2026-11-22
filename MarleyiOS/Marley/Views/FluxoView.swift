@@ -83,7 +83,7 @@ struct FluxoView: View {
             Button {
                 if !store.toggleCleared(t.id) { clearing = t }
             } label: {
-                Label(t.cleared ? "Desfazer" : "Reconciliar", systemImage: t.cleared ? "arrow.uturn.backward.circle" : "checkmark.circle")
+                Label(t.cleared ? "Uncleared" : "Cleared", systemImage: t.cleared ? "circle" : "checkmark.circle")
             }
             .tint(.moneyIn)
         }
@@ -151,14 +151,14 @@ struct ClearOnDateSheet: View {
                 Section {
                     DatePicker("Data", selection: $date, in: ...Date(), displayedComponents: .date)
                 } footer: {
-                    Text("\(displayDescription(txn.desc)) estava agendada para \(Day.short(txn.date)). Em que dia ela aconteceu?")
+                    Text("\(displayDescription(txn.desc)) tem data futura (\(Day.short(txn.date))). Para marcá-la como cleared, escolha uma nova data (hoje ou anterior).")
                 }
             }
-            .navigationTitle("Reconciliar")
+            .navigationTitle("Trazer para o presente")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancelar") { dismiss() } }
-                ToolbarItem(placement: .confirmationAction) { Button("Reconciliar") { store.clear(txn.id, on: Day.string(date)); dismiss() } }
+                ToolbarItem(placement: .confirmationAction) { Button("Confirmar") { store.clear(txn.id, on: Day.string(date)); dismiss() } }
             }
         }
         .presentationDetents([.medium])
@@ -190,7 +190,7 @@ struct DeleteConfirmation: ViewModifier {
         } message: { t in
             if let p = Installments.parse(t.desc), !following.isEmpty { Text("\"\(displayDescription(p.base))\" é a parcela \(p.i) de \(p.n).") }
             else if recAll > 0 { Text("É uma transação recorrente. \"Esta e as futuras\" e \"Todas\" impedem que ela seja recriada nos próximos meses. Reconciliadas 🔒 nunca são apagadas.") }
-            else if t.locked { Text("Esta transação está reconciliada com o banco.") }
+            else if t.locked { Text("Esta transação está reconciliada 🔒.") }
         }
     }
     var title: String { txn.map { "Apagar \(displayDescription($0.desc))?" } ?? "" }
