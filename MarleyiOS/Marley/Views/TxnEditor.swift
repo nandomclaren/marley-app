@@ -18,6 +18,7 @@ struct TxnEditor: View {
     @State private var notes = ""
     @State private var deleting: Txn?
     @State private var catTouched = false
+    @State private var askScope = false
     @FocusState private var focus: Field?
     enum Field { case amount, desc }
 
@@ -88,6 +89,18 @@ struct TxnEditor: View {
                 ToolbarItem(placement: .confirmationAction) { Button("Salvar") { save() }.disabled(!valid) }
             }
             .deleteConfirmation(for: $deleting) { dismiss() }
+            .confirmationDialog("Transação recorrente", isPresented: $askScope, titleVisibility: .visible) {
+                if let t = current {
+                    let future = Recurring.others(store.data, t, .thisAndFuture).count
+                    let all = Recurring.others(store.data, t, .all).count
+                    Button("Só esta") { commit(.this) }
+                    if future > 0 { Button("Esta e as futuras (\(future + 1))") { commit(.thisAndFuture) } }
+                    Button("Todas (\(all + 1))") { commit(.all) }
+                    Button("Cancelar", role: .cancel) {}
+                }
+            } message: {
+                Text("Aplicar a alteração a quais lançamentos de \"\(displayDescription(current?.desc ?? ""))\"? Só os campos que você mudou passam para os outros meses. Reconciliadas 🔒 não mudam.")
+            }
             .onAppear(perform: load)
             .onChange(of: installments) { _, n in if n > 1 { recurring = false } }
         }
@@ -124,11 +137,20 @@ struct TxnEditor: View {
         }
     }
 
+    /// A versão atual da transação editada (pode ter mudado por sync desde que o editor abriu).
+    var current: Txn? { editing.map { store.data.txn($0.id) ?? $0 } }
+
     func save() {
+        if let t = current, Recurring.hasOthers(store.data, t) { askScope = true; return }
+        commit(.this)
+    }
+
+    func commit(_ scope: RecurringScope) {
         guard let amount else { return }
         let d = desc.trimmingCharacters(in: .whitespaces), n = notes.trimmingCharacters(in: .whitespaces), ds = Day.string(date)
-        if let t = editing {
-            store.updateTransaction(t.id, date: ds, desc: d, acct: acct, amount: amount, isIncome: isIncome, cat: cat, notes: n, recurring: recurring, uncertain: uncertain)
+        if let t = current {
+            store.updateTransaction(t, with: TxnEdit(date: ds, desc: d, acct: acct, amount: amount, isIncome: isIncome, cat: cat, notes: n,
+                                                     recurring: recurring, uncertain: uncertain), scope: scope)
         } else {
             store.addTransaction(date: ds, desc: d, acct: acct, amount: amount, isIncome: isIncome, cat: cat, notes: n,
                                  recurring: recurring, uncertain: uncertain, installments: installments)

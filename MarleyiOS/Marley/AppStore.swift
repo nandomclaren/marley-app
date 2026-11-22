@@ -153,18 +153,12 @@ final class AppStore {
             }
         }
     }
-    func updateTransaction(_ id: Int, date: String, desc: String, acct: String, amount: Double, isIncome: Bool, cat: String, notes: String,
-                           recurring: Bool, uncertain: Bool) {
-        edit { d in
-            d.update(id) { t in
-                t.date = date; t.desc = desc; t.acct = acct; t.cat = cat; t.notes = notes
-                t.out = isIncome ? 0 : amount; t.in_ = isIncome ? amount : 0
-                if !["opening", "salary", "critical"].contains(t.style) { t.style = "normal" }
-                t.recurring = recurring; t.warning = uncertain
-            }
-        }
-    }
     func delete(_ ids: Set<Int>) { edit { Ledger.delete(&$0, ids: ids) } }
+    /// Edição com escopo para recorrentes (só esta / esta e as futuras / todas).
+    func updateTransaction(_ original: Txn, with e: TxnEdit, scope: RecurringScope) {
+        edit { Recurring.applyEdit(&$0, original: original, edit: e, scope: scope) }
+    }
+    func deleteRecurring(_ t: Txn, scope: RecurringScope) { edit { Recurring.delete(&$0, t, scope: scope) } }
     /// toggleCleared(): returns false when the transaction is in the future and needs a date first.
     @discardableResult
     func toggleCleared(_ id: Int) -> Bool {

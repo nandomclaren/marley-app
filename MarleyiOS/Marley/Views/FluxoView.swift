@@ -173,8 +173,14 @@ struct DeleteConfirmation: ViewModifier {
 
     func body(content: Content) -> some View {
         let following = txn.map { Installments.following(store.data, $0).filter { !$0.locked } } ?? []
+        let recFuture = txn.map { Recurring.others(store.data, $0, .thisAndFuture).count } ?? 0
+        let recAll = txn.map { Recurring.others(store.data, $0, .all).count } ?? 0
         content.confirmationDialog(title, isPresented: Binding(get: { txn != nil }, set: { if !$0 { txn = nil } }), titleVisibility: .visible, presenting: txn) { t in
-            if following.isEmpty {
+            if following.isEmpty && recAll > 0 {
+                Button("Só esta", role: .destructive) { store.deleteRecurring(t, scope: .this); onDeleted() }
+                if recFuture > 0 { Button("Esta e as futuras (\(recFuture + 1))", role: .destructive) { store.deleteRecurring(t, scope: .thisAndFuture); onDeleted() } }
+                Button("Todas (\(recAll + (t.locked ? 0 : 1)))", role: .destructive) { store.deleteRecurring(t, scope: .all); onDeleted() }
+            } else if following.isEmpty {
                 Button("Apagar", role: .destructive) { store.delete([t.id]); onDeleted() }
             } else {
                 Button("Só esta", role: .destructive) { store.delete([t.id]); onDeleted() }
@@ -183,6 +189,7 @@ struct DeleteConfirmation: ViewModifier {
             Button("Cancelar", role: .cancel) {}
         } message: { t in
             if let p = Installments.parse(t.desc), !following.isEmpty { Text("\"\(displayDescription(p.base))\" é a parcela \(p.i) de \(p.n).") }
+            else if recAll > 0 { Text("É uma transação recorrente. \"Esta e as futuras\" e \"Todas\" impedem que ela seja recriada nos próximos meses. Reconciliadas 🔒 nunca são apagadas.") }
             else if t.locked { Text("Esta transação está reconciliada com o banco.") }
         }
     }
