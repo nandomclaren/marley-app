@@ -18,7 +18,8 @@ struct FluxoView: View {
     var body: some View {
         let rows = store.monthRows(store.selectedMonth)
         let today = store.today
-        let upcoming = rows.filter { $0.txn.date > today }
+        // Mais distante no topo, mais próxima embaixo (colada no dia de hoje), como no web e no Android.
+        let upcoming = Array(rows.filter { $0.txn.date > today }.reversed())
         let past = rows.filter { $0.txn.date <= today }.reversed()
         let days = Dictionary(grouping: past, by: { $0.txn.date })
         NavigationStack {
