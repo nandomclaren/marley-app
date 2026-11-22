@@ -135,10 +135,12 @@ struct CategoryDetailView: View {
         .onChange(of: store.selectedMonth) { _, _ in budgetText = fmt(store.data.budget(store.selectedMonth, cat)) }
         .sheet(item: $editor) { TxnEditor(target: $0) }
     }
-    func fmt(_ v: Double) -> String { String(format: "%.2f", v).replacingOccurrences(of: ".", with: ",") }
+    /// Zero fica vazio (o placeholder "0,00" aparece em cinza), para digitar direto sem apagar antes.
+    func fmt(_ v: Double) -> String { abs(v) < 0.005 ? "" : String(format: "%.2f", v).replacingOccurrences(of: ".", with: ",") }
     func saveBudget() {
         editingBudget = false
-        guard let v = parseAmount(budgetText) else { budgetText = fmt(store.data.budget(store.selectedMonth, cat)); return }
+        let trimmed = budgetText.trimmingCharacters(in: .whitespaces)
+        guard let v = trimmed.isEmpty ? 0 : parseAmount(trimmed) else { budgetText = fmt(store.data.budget(store.selectedMonth, cat)); return }
         store.setBudget(store.selectedMonth, cat, v)
         budgetText = fmt(v)
     }

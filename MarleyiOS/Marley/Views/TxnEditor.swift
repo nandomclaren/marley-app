@@ -115,7 +115,8 @@ struct TxnEditor: View {
 
     func load() {
         if let t = editing {
-            isIncome = t.isIncome; amountText = String(format: "%.2f", t.amount).replacingOccurrences(of: ".", with: ",")
+            isIncome = t.isIncome
+            amountText = t.amount < 0.005 ? "" : String(format: "%.2f", t.amount).replacingOccurrences(of: ".", with: ",")
             desc = t.desc; date = Day.date(t.date) ?? Date(); acct = Accounts.all.contains(t.acct) ? t.acct : "Revolut"
             recurring = t.recurring || t.style == "fixed"; uncertain = t.isUncertain; cat = t.cat; notes = t.notes; catTouched = true
         } else {
