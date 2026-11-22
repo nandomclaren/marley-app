@@ -14,3 +14,9 @@ android/.gradle/
 android/local.properties
 *.g.dart.bak
 .DS_Store
+# Swift / Xcode
+MarleyiOS/**/.build/
+MarleyiOS/**/.swiftpm/
+MarleyiOS/**/xcuserdata/
+MarleyiOS/**/DerivedData/
+*.xcuserstate
