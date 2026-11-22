@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 import MarleyCore
 
 extension Color {
@@ -127,6 +128,25 @@ struct MarkdownText: View {
             return l
         }.joined(separator: "\n")
         Text((try? AttributedString(markdown: cleaned, options: opts)) ?? AttributedString(cleaned))
+    }
+}
+
+/// Fecha o teclado (qualquer campo em foco).
+@MainActor func hideKeyboard() {
+    UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+}
+
+extension View {
+    /// Teclado sempre fechável: botão OK acima do teclado e arrastar a lista para baixo.
+    func keyboardDismissable() -> some View {
+        self
+            .scrollDismissesKeyboard(.interactively)
+            .toolbar {
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("OK") { hideKeyboard() }.fontWeight(.semibold)
+                }
+            }
     }
 }
 

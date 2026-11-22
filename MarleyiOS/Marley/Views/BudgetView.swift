@@ -127,6 +127,7 @@ struct CategoryDetailView: View {
                 if txns.isEmpty { Text("Nenhuma neste mês.").foregroundStyle(.secondary) }
             }
         }
+        .keyboardDismissable()
         .navigationTitle(cat)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { ToolbarItem(placement: .confirmationAction) { if editingBudget { Button("Salvar", action: saveBudget) } } }
@@ -161,6 +162,7 @@ struct MoveMoneySheet: View {
                     TextField("Valor", text: $amountText).keyboardType(.decimalPad)
                 } footer: { Text("Move orçado de \(Day.monthLabel(store.selectedMonth)) entre categorias.") }
             }
+            .keyboardDismissable()
             .navigationTitle("Mover dinheiro")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

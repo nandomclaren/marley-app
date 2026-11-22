@@ -47,6 +47,7 @@ struct TxnEditor: View {
                             .focused($focus, equals: .amount)
                     }
                     TextField("Descrição", text: $desc).focused($focus, equals: .desc)
+                        .submitLabel(.done).onSubmit { focus = nil }
                     if !suggestions.isEmpty {
                         ScrollView(.horizontal, showsIndicators: false) {
                             HStack {
@@ -79,6 +80,7 @@ struct TxnEditor: View {
                     }
                 }
             }
+            .keyboardDismissable()
             .navigationTitle(editing == nil ? "Nova transação" : "Editar")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

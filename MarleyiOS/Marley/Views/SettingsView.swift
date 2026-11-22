@@ -59,6 +59,7 @@ struct SettingsView: View {
                     LabeledContent("Versão", value: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "")
                 }
             }
+            .keyboardDismissable()
             .navigationTitle("Configurações")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("OK") { dismiss() } } }

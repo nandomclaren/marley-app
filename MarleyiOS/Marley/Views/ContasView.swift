@@ -123,6 +123,7 @@ struct ReconcileSheet: View {
             }
             .padding(24)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .keyboardDismissable()
             .navigationTitle("Reconciliar \(acct)")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .cancellationAction) { if step < 3 { Button("Cancelar") { dismiss() } } } }
