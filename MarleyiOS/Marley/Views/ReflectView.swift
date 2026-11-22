@@ -14,6 +14,25 @@ struct ReflectView: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 16) {
+                    card("Saldo de \(Day.monthLabel(m))", systemImage: "eurosign.circle.fill") {
+                        let o = Ledger.monthOverview(d, month: m, today: today)
+                        Grid(horizontalSpacing: 12, verticalSpacing: 12) {
+                            GridRow {
+                                overviewStat("Início de \(Day.monthName(m).prefix(3).lowercased())", o.start)
+                                overviewStat("Saldo hoje", o.today, note: Day.short(today))
+                            }
+                            GridRow {
+                                overviewStat("Projetado fim do mês", o.projectedEnd)
+                                if let minimum = o.minimum {
+                                    overviewStat("⚠️ Mínimo do mês", minimum,
+                                                 note: o.minimumDate.map { "em \(Day.short($0))" },
+                                                 tint: minimum < Ledger.MonthOverview.lowThreshold ? .moneyOut : .marleyAccent)
+                                } else {
+                                    overviewStat("⚠️ Mínimo do mês", nil)
+                                }
+                            }
+                        }
+                    }
                     card("Gastos de \(Day.monthLabel(m))", systemImage: "chart.pie.fill") {
                         Text(Money.eur(total)).font(.system(size: 32, weight: .bold).monospacedDigit())
                         if total > 0 {
@@ -82,6 +101,21 @@ struct ReflectView: View {
         .background(.background, in: .rect(cornerRadius: 20))
     }
     func short(_ m: String) -> String { String(Day.monthName(m).prefix(3)) }
+
+    /// Um dos 4 cards do topo do Fluxo no web.
+    func overviewStat(_ title: String, _ value: Double?, note: String? = nil, tint: Color? = nil) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title).font(.caption).foregroundStyle(.secondary).lineLimit(1).minimumScaleFactor(0.8)
+            Text(value.map { Money.eur($0) } ?? "—")
+                .font(.title3.weight(.semibold).monospacedDigit())
+                .foregroundStyle(tint ?? ((value ?? 0) < -0.004 ? Color.moneyOut : .primary))
+                .lineLimit(1).minimumScaleFactor(0.6)
+            Text(note ?? " ").font(.caption2).foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .background(.background.secondary, in: .rect(cornerRadius: 14))
+    }
 
     /// Categorized spending up to today, by group (future-dated spending excluded, like the web Reflect).
     struct GroupSpend: Identifiable { let group: String; let value: Double; var id: String { group } }

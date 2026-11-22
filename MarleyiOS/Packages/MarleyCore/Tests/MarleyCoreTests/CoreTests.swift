@@ -65,6 +65,26 @@ final class LedgerTests: XCTestCase {
         XCTAssertEqual(Ledger.running(d).last!.total, 1250 + 5000 - 80 - 25 - 999 - 10, accuracy: 0.001)
         XCTAssertEqual(Ledger.accountRows(d, "Revolut", month: "2026-11").map(\.total).last!, 5895 - 999, accuracy: 0.001)
     }
+    func testMonthOverviewMatchesWebCards() {
+        // abertura 1250; outubro termina em 1250 − 100 = 1150
+        let d = makeData([
+            T(1, "2026-10-10", "Out", out: 100),
+            T(2, "2026-11-01", "Aluguel", out: 900),
+            T(3, "2026-11-05", "Salário", in_: 3000),
+            T(4, "2026-11-25", "Futuro", out: 200),
+            T(5, "2026-11-03", "Mercado", out: 120),
+        ])
+        let o = Ledger.monthOverview(d, month: "2026-11", today: "2026-11-22")
+        XCTAssertEqual(o.start, 1150, accuracy: 0.001)
+        XCTAssertEqual(o.today, 1150 - 900 - 120 + 3000, accuracy: 0.001)
+        XCTAssertEqual(o.projectedEnd, 1150 - 900 - 120 + 3000 - 200, accuracy: 0.001)
+        XCTAssertEqual(o.minimum!, 1150 - 900 - 120, accuracy: 0.001)
+        XCTAssertEqual(o.minimumDate, "2026-11-03")
+        // mês sem transações: tudo igual ao início, sem mínimo
+        let e = Ledger.monthOverview(d, month: "2026-12", today: "2026-11-22")
+        XCTAssertEqual(e.start, e.projectedEnd); XCTAssertNil(e.minimum)
+    }
+
     func testAAlocarOnlyUncategorizedMinusAllBudgets() {
         let d = makeData([
             T(1, "2026-03-01", "Salário", in_: 3000),

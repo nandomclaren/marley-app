@@ -43,6 +43,28 @@ public enum Ledger {
         return all.filter { $0.month == month }.map { t in bal += t.net; return RunningRow(txn: t, total: bal) }
     }
 
+    public struct MonthOverview: Equatable, Sendable {
+        public let start: Double          // "Início de nov": saldo total antes do 1º dia do mês
+        public let today: Double          // "Saldo hoje": saldo total até hoje (independe do mês escolhido)
+        public let projectedEnd: Double   // "Projetado fim do mês": saldo após a última transação do mês
+        public let minimum: Double?       // "Mínimo do mês": menor saldo corrido dentro do mês
+        public let minimumDate: String?
+        /// Abaixo disso o web pinta o mínimo de vermelho.
+        public static let lowThreshold = 800.0
+    }
+    /// Os 4 cards do topo do Fluxo no web (render() → s-part, s-hoje, s-final, s-min).
+    public static func monthOverview(_ d: AppData, month: String, today: String) -> MonthOverview {
+        let rows = running(d)
+        let opening = d.openingBalance.values.reduce(0, +)
+        let monthStart = month + "-01", monthEnd = String(format: "%@-%02d", month, Day.lastDay(month))
+        let start = rows.last(where: { $0.txn.date < monthStart && $0.txn.style != "opening" })?.total ?? opening
+        let inMonth = rows.filter { $0.txn.date >= monthStart && $0.txn.date <= monthEnd }
+        let end = inMonth.last?.total ?? start
+        let now = rows.last(where: { $0.txn.date <= today })?.total ?? start
+        let minRow = inMonth.min { $0.total < $1.total }  // primeira ocorrência do menor valor, como no web
+        return MonthOverview(start: start, today: now, projectedEnd: end, minimum: minRow?.total, minimumDate: minRow?.txn.date)
+    }
+
     // MARK: Budget
 
     /// Spent per category in a month (out − in).
