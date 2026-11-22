@@ -8,8 +8,6 @@ struct ReflectView: View {
     var body: some View {
         let d = store.data, today = store.today
         let m = store.selectedMonth == Ledger.startMonth ? (d.months.first { $0 != Ledger.startMonth } ?? store.selectedMonth) : store.selectedMonth
-        let spent = spending(d, month: m, today: today)
-        let total = spent.reduce(0) { $0 + $1.value }
         let months = d.months.filter { $0 != Ledger.startMonth && $0 <= String(today.prefix(7)) }
         NavigationStack {
             ScrollView {
@@ -33,23 +31,7 @@ struct ReflectView: View {
                             }
                         }
                     }
-                    card("Gastos de \(Day.monthLabel(m))", systemImage: "chart.pie.fill") {
-                        Text(Money.eur(total)).font(.system(size: 32, weight: .bold).monospacedDigit())
-                        if total > 0 {
-                            Chart(spent) { s in
-                                SectorMark(angle: .value("Gasto", s.value), innerRadius: .ratio(0.62), angularInset: 1.5)
-                                    .cornerRadius(4)
-                                    .foregroundStyle(by: .value("Grupo", s.group))
-                            }
-                            .frame(height: 220)
-                            ForEach(Array(spent.prefix(5))) { s in
-                                HStack { Text(s.group); Spacer(); Text(Money.eur(s.value)).monospacedDigit(); Text("\(Int((s.value / total * 100).rounded()))%").foregroundStyle(.secondary).frame(width: 44, alignment: .trailing) }
-                                    .font(.subheadline)
-                            }
-                        } else {
-                            Text("Nenhum gasto neste mês.").foregroundStyle(.secondary)
-                        }
-                    }
+                    SpendingBreakdownCard(month: m)
                     card("Entradas vs saídas", systemImage: "chart.bar.fill") {
                         let flows = months.map { mo in Flow(month: mo, income: income(d, mo, today), expense: expense(d, mo, today)) }
                         Chart {
@@ -118,18 +100,9 @@ struct ReflectView: View {
     }
 
     /// Categorized spending up to today, by group (future-dated spending excluded, like the web Reflect).
-    struct GroupSpend: Identifiable { let group: String; let value: Double; var id: String { group } }
     struct Flow: Identifiable { let month: String; let income: Double; let expense: Double; var id: String { month } }
     struct Point: Identifiable { let month: String; let value: Double; var id: String { month } }
 
-    func spending(_ d: AppData, month: String, today: String) -> [GroupSpend] {
-        var byGroup: [String: Double] = [:]
-        for t in d.txns where t.month == month && !t.cat.isEmpty && t.date <= today {
-            guard let gi = Categories.groupIndex(of: t.cat) else { continue }
-            byGroup[Categories.groups[gi].group, default: 0] += t.out - t.in_
-        }
-        return byGroup.filter { $0.value > 0.005 }.map { GroupSpend(group: $0.key, value: $0.value) }.sorted { $0.value > $1.value }
-    }
     func income(_ d: AppData, _ m: String, _ today: String) -> Double { d.txns.filter { $0.month == m && $0.in_ > 0 && $0.style != "opening" && $0.date <= today }.reduce(0) { $0 + $1.in_ } }
     func expense(_ d: AppData, _ m: String, _ today: String) -> Double { d.txns.filter { $0.month == m && $0.out > 0 && $0.style != "opening" && $0.date <= today }.reduce(0) { $0 + $1.out } }
 }
