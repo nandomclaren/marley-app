@@ -105,16 +105,11 @@ struct TxnEditor: View {
     var suggestions: [String] {
         let typed = displayDescription(desc).lowercased()
         guard typed.count >= 3, focus == .desc else { return [] }
-        var seen = Set<String>(), out: [String] = []
-        for t in store.data.txns.sorted(by: { $0.date > $1.date }) where t.style != "opening" {
-            let bare = displayDescription(t.desc).lowercased()
-            if bare.hasPrefix(typed), bare != typed, seen.insert(bare).inserted { out.append(t.desc); if out.count == 6 { break } }
-        }
-        return out
+        return Array(store.pastDescriptions.lazy.filter { $0.bare.hasPrefix(typed) && $0.bare != typed }.prefix(6).map { $0.desc })
     }
     func pick(_ s: String) {
         desc = s
-        if !catTouched, let last = store.data.txns.filter({ $0.desc == s && !$0.cat.isEmpty }).max(by: { $0.date < $1.date }) { cat = last.cat }
+        if !catTouched, let last = store.lastCategoryByDesc[s] { cat = last }
         focus = nil
     }
 

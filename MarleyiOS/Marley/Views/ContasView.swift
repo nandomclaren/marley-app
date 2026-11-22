@@ -12,8 +12,8 @@ struct ContasView: View {
 
     var body: some View {
         let today = store.today
-        let s = Ledger.accountSummary(store.data, acct, today: today)
-        let rows = Ledger.accountRows(store.data, acct, month: store.selectedMonth).filter { !hideCleared || (!$0.txn.cleared && !$0.txn.locked) }
+        let s = store.accountSummary(acct)
+        let rows = store.accountRows(acct, store.selectedMonth).filter { !hideCleared || (!$0.txn.cleared && !$0.txn.locked) }
         let future = rows.filter { $0.txn.date > today }.reversed()
         let past = rows.filter { $0.txn.date <= today }.reversed()
         NavigationStack {

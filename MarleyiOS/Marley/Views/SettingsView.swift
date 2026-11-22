@@ -12,6 +12,7 @@ struct SettingsView: View {
     @State private var aiSaved = false
     @State private var confirmRestore = false
     @State private var restoringBackup: URL?
+    @State private var exportURL: URL?
 
     var body: some View {
         NavigationStack {
@@ -45,7 +46,11 @@ struct SettingsView: View {
                 }
 
                 Section {
-                    ShareLink(item: store.exportFile()) { Label("Exportar backup (JSON)", systemImage: "square.and.arrow.up") }
+                    if let exportURL {
+                        ShareLink(item: exportURL) { Label("Exportar backup (JSON)", systemImage: "square.and.arrow.up") }
+                    } else {
+                        Button { exportURL = store.exportFile() } label: { Label("Preparar backup (JSON)", systemImage: "square.and.arrow.up") }
+                    }
                     Button(role: .destructive) { confirmRestore = true } label: { Label("Restaurar do Gist", systemImage: "arrow.down.circle") }
                         .disabled(!store.isConfigured)
                     NavigationLink { LocalBackupsView(restoring: $restoringBackup) } label: { Label("Backups neste iPhone", systemImage: "clock.arrow.circlepath") }
@@ -60,6 +65,7 @@ struct SettingsView: View {
                 }
             }
             .keyboardDismissable()
+            .onAppear { exportURL = store.exportFile() }
             .navigationTitle("Configurações")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("OK") { dismiss() } } }

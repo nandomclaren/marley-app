@@ -15,7 +15,7 @@ struct ReflectView: View {
             ScrollView {
                 VStack(spacing: 16) {
                     card("Saldo de \(Day.monthLabel(m))", systemImage: "eurosign.circle.fill") {
-                        let o = Ledger.monthOverview(d, month: m, today: today)
+                        let o = store.monthOverview(m)
                         Grid(horizontalSpacing: 12, verticalSpacing: 12) {
                             GridRow {
                                 overviewStat("Início de \(Day.monthName(m).prefix(3).lowercased())", o.start)
@@ -62,7 +62,7 @@ struct ReflectView: View {
                         .frame(height: 200)
                     }
                     card("Patrimônio", systemImage: "building.columns.fill") {
-                        let b = Ledger.balances(d, asOf: today)
+                        let b = store.balancesToday
                         Text(Money.eur(b.values.reduce(0, +))).font(.system(size: 32, weight: .bold).monospacedDigit())
                         HStack { ForEach(Accounts.all, id: \.self) { a in VStack(alignment: .leading) { Text(a).font(.caption).foregroundStyle(.secondary); Text(Money.eur(b[a] ?? 0)).font(.subheadline.monospacedDigit()) }.frame(maxWidth: .infinity, alignment: .leading) } }
                         let nw = months.map { mo in Point(month: mo, value: Ledger.balances(d, asOf: min(today, mo + "-31")).values.reduce(0, +)) }

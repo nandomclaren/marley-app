@@ -20,6 +20,9 @@ struct PendingQuestion: Identifiable {
 @MainActor @Observable
 final class AppStore {
     private(set) var data: AppData
+    /// Muda sempre que `data` muda; as telas observam isto para refazer os cálculos guardados.
+    private(set) var dataVersion = 0
+    @ObservationIgnored private let derived = DerivedCache()
     var selectedMonth: String
     var syncStatus: SyncStatus = .idle
     var pendingQuestion: PendingQuestion?
@@ -80,10 +83,51 @@ final class AppStore {
         change(&d)
         guard d != data else { return }
         d.lastModified = (Date().timeIntervalSince1970 * 1000).rounded()
-        data = d
+        setData(d)
         persist()
         schedulePush()
     }
+    private func setData(_ d: AppData) {
+        data = d
+        dataVersion &+= 1
+    }
+
+    // MARK: Cálculos guardados (refeitos só quando os dados ou o dia mudam)
+
+    private func cached<T>(_ key: String, _ make: () -> T) -> T {
+        _ = dataVersion // registra a dependência para a tela que chamou
+        return derived.value(key, version: dataVersion, day: today, make)
+    }
+    var runningRows: [Ledger.RunningRow] { cached("running") { Ledger.running(data) } }
+    func monthRows(_ m: String) -> [Ledger.RunningRow] {
+        cached("month:\(m)") { runningRows.filter { $0.txn.month == m && $0.txn.style != "opening" } }
+    }
+    var balancesToday: [String: Double] { cached("balances") { Ledger.balances(data, asOf: today) } }
+    var aAlocarToday: Double { cached("aalocar") { Ledger.aAlocar(data, today: today) } }
+    func categoryLines(_ m: String) -> [Ledger.CategoryLine] { cached("lines:\(m)") { Ledger.categoryLines(data, month: m) } }
+    func accountSummary(_ a: String) -> Ledger.AccountSummary { cached("acct:\(a)") { Ledger.accountSummary(data, a, today: today) } }
+    func accountRows(_ a: String, _ m: String) -> [Ledger.RunningRow] { cached("acctRows:\(a):\(m)") { Ledger.accountRows(data, a, month: m) } }
+    func monthOverview(_ m: String) -> Ledger.MonthOverview { cached("overview:\(m)") { Ledger.monthOverview(data, month: m, today: today) } }
+    /// Descrições já usadas, da mais recente para a mais antiga, sem repetir (para as sugestões do editor).
+    var pastDescriptions: [(bare: String, desc: String)] {
+        cached("descs") {
+            var seen = Set<String>(), out: [(bare: String, desc: String)] = []
+            for t in data.txns.sorted(by: { $0.date > $1.date }) where t.style != "opening" {
+                let bare = displayDescription(t.desc).lowercased()
+                if seen.insert(bare).inserted { out.append((bare: bare, desc: t.desc)) }
+            }
+            return out
+        }
+    }
+    /// Última categoria usada para cada descrição.
+    var lastCategoryByDesc: [String: String] {
+        cached("descCats") {
+            var m: [String: (date: String, cat: String)] = [:]
+            for t in data.txns where !t.cat.isEmpty { if (m[t.desc]?.date ?? "") <= t.date { m[t.desc] = (t.date, t.cat) } }
+            return m.mapValues { $0.cat }
+        }
+    }
+
     private func persist() {
         do { try local.save(data) } catch { syncStatus = .error("Não consegui salvar no aparelho: \(error.localizedDescription)") }
     }
@@ -155,7 +199,7 @@ final class AppStore {
                     return
                 }
                 if r.outcome == .pulled { local.snapshot(before, reason: "antes-de-baixar") }
-                data = nd
+                setData(nd)
                 persist()
             }
             syncState = st
@@ -225,7 +269,7 @@ final class AppStore {
         do {
             let d = try await Sync.forcePull(state: &st, transport: transport)
             local.snapshot(data, reason: "antes-de-restaurar")
-            data = d
+            setData(d)
             persist()
             syncState = st
             local.saveState(st)
@@ -271,6 +315,20 @@ final class AppStore {
                     confirm: "Enviar mesmo assim", cancel: "Não enviar", destructive: true, resume: resume)
             }
         }
+    }
+}
+
+/// Guarda resultados por chave; tudo é descartado quando a versão dos dados ou o dia mudam.
+final class DerivedCache {
+    private var version = -1
+    private var day = ""
+    private var values: [String: Any] = [:]
+    func value<T>(_ key: String, version v: Int, day d: String, _ make: () -> T) -> T {
+        if v != version || d != day { values.removeAll(); version = v; day = d }
+        if let hit = values[key] as? T { return hit }
+        let made = make()
+        values[key] = made
+        return made
     }
 }
 

@@ -16,7 +16,7 @@ struct FluxoView: View {
     @State private var showUpcoming = false
 
     var body: some View {
-        let rows = Ledger.running(store.data).filter { $0.txn.month == store.selectedMonth && $0.txn.style != "opening" }
+        let rows = store.monthRows(store.selectedMonth)
         let today = store.today
         let upcoming = rows.filter { $0.txn.date > today }
         let past = rows.filter { $0.txn.date <= today }.reversed()
@@ -58,7 +58,7 @@ struct FluxoView: View {
     }
 
     func summary(_ rows: [Ledger.RunningRow]) -> some View {
-        let bal = Ledger.balances(store.data, asOf: store.today).values.reduce(0, +)
+        let bal = store.balancesToday.values.reduce(0, +)
         let inn = rows.reduce(0) { $0 + $1.txn.in_ }, out = rows.reduce(0) { $0 + $1.txn.out }
         return HStack(spacing: 10) {
             StatCard(title: "Saldo hoje", value: bal)

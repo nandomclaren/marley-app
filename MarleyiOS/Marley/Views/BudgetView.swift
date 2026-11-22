@@ -7,14 +7,14 @@ struct BudgetView: View {
 
     var body: some View {
         let m = store.selectedMonth
-        let lines = Ledger.categoryLines(store.data, month: m)
+        let lines = store.categoryLines(m)
         let byCat = Dictionary(uniqueKeysWithValues: lines.map { ($0.cat, $0) })
         let attention = lines.filter { $0.available < -0.005 }
         NavigationStack {
             List {
                 Section {
                     VStack(spacing: 10) {
-                        StatCard(title: "A Alocar", value: Ledger.aAlocar(store.data, today: store.today), tint: .marleyAccent)
+                        StatCard(title: "A Alocar", value: store.aAlocarToday, tint: .marleyAccent)
                         HStack(spacing: 10) {
                             StatCard(title: "Orçado", value: lines.reduce(0) { $0 + $1.budgeted })
                             StatCard(title: "Gasto", value: lines.reduce(0) { $0 + $1.spent })
@@ -92,7 +92,7 @@ struct CategoryDetailView: View {
 
     var body: some View {
         let m = store.selectedMonth
-        let line = Ledger.categoryLines(store.data, month: m).first { $0.cat == cat }!
+        let line = store.categoryLines(m).first { $0.cat == cat }!
         let txns = Ledger.sorted(store.data.txns.filter { $0.cat == cat && $0.month == m }).reversed()
         let byDesc = Dictionary(grouping: txns, by: { displayDescription($0.desc) })
             .map { DescSum(desc: $0.key, total: $0.value.reduce(0) { acc, t in acc + t.net }, count: $0.value.count) }
