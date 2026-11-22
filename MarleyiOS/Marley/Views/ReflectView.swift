@@ -42,14 +42,15 @@ struct ReflectView: View {
                         }
                         Chart {
                             ForEach(flows) { f in
-                                BarMark(x: .value("Mês", short(f.month)), y: .value("€", f.incomePast)).foregroundStyle(by: .value("Tipo", "Entradas")).position(by: .value("Grupo", "Entradas"))
-                                BarMark(x: .value("Mês", short(f.month)), y: .value("€", f.incomeFuture)).foregroundStyle(by: .value("Tipo", "Entradas previstas")).position(by: .value("Grupo", "Entradas"))
-                                BarMark(x: .value("Mês", short(f.month)), y: .value("€", f.expensePast)).foregroundStyle(by: .value("Tipo", "Saídas")).position(by: .value("Grupo", "Saídas"))
-                                BarMark(x: .value("Mês", short(f.month)), y: .value("€", f.expenseFuture)).foregroundStyle(by: .value("Tipo", "Saídas previstas")).position(by: .value("Grupo", "Saídas"))
+                                BarMark(x: .value("Mês", f.month), y: .value("€", f.incomePast)).foregroundStyle(by: .value("Tipo", "Entradas")).position(by: .value("Grupo", "Entradas"))
+                                BarMark(x: .value("Mês", f.month), y: .value("€", f.incomeFuture)).foregroundStyle(by: .value("Tipo", "Entradas previstas")).position(by: .value("Grupo", "Entradas"))
+                                BarMark(x: .value("Mês", f.month), y: .value("€", f.expensePast)).foregroundStyle(by: .value("Tipo", "Saídas")).position(by: .value("Grupo", "Saídas"))
+                                BarMark(x: .value("Mês", f.month), y: .value("€", f.expenseFuture)).foregroundStyle(by: .value("Tipo", "Saídas previstas")).position(by: .value("Grupo", "Saídas"))
                             }
                         }
                         .chartForegroundStyleScale(["Entradas": Color.moneyIn, "Entradas previstas": Color.moneyIn.opacity(0.3),
                                                     "Saídas": Color.moneyOut, "Saídas previstas": Color.moneyOut.opacity(0.3)])
+                        .monthScroller(flows.map(\.month), short: short)
                         .frame(height: 200)
                     }
                     card("Patrimônio", systemImage: "building.columns.fill") {
@@ -58,9 +59,10 @@ struct ReflectView: View {
                         HStack { ForEach(Accounts.all, id: \.self) { a in VStack(alignment: .leading) { Text(a).font(.caption).foregroundStyle(.secondary); Text(Money.eur(b[a] ?? 0)).font(.subheadline.monospacedDigit()) }.frame(maxWidth: .infinity, alignment: .leading) } }
                         let nw = pastMonths.map { mo in Point(month: mo, value: Ledger.balances(d, asOf: min(today, mo + "-31")).values.reduce(0, +)) }
                         Chart(nw) { p in
-                            LineMark(x: .value("Mês", short(p.month)), y: .value("€", p.value)).interpolationMethod(.catmullRom)
-                            PointMark(x: .value("Mês", short(p.month)), y: .value("€", p.value))
+                            LineMark(x: .value("Mês", p.month), y: .value("€", p.value)).interpolationMethod(.catmullRom)
+                            PointMark(x: .value("Mês", p.month), y: .value("€", p.value))
                         }
+                        .monthScroller(nw.map(\.month), short: short)
                         .frame(height: 160)
                     }
                     card("Idade do dinheiro", systemImage: "hourglass") {
@@ -120,5 +122,21 @@ struct ReflectView: View {
     }
     func expense(_ d: AppData, _ m: String, _ today: String, future: Bool) -> Double {
         d.txns.filter { $0.month == m && $0.out > 0 && $0.style != "opening" && ($0.date > today) == future }.reduce(0) { $0 + $1.out }
+    }
+}
+
+extension View {
+    /// 6 meses visíveis (como no web), abrindo nos últimos 6; os anteriores ficam a um arrasto para a direita.
+    /// O eixo usa o mês completo ("2026-03") como valor, para meses de anos diferentes não se misturarem.
+    func monthScroller(_ months: [String], short: @escaping (String) -> String) -> some View {
+        self
+            .chartScrollableAxes(.horizontal)
+            .chartXVisibleDomain(length: min(6, max(months.count, 1)))
+            .chartScrollPosition(initialX: months.count > 6 ? months[months.count - 6] : (months.first ?? ""))
+            .chartXAxis {
+                AxisMarks { value in
+                    AxisValueLabel { if let m = value.as(String.self) { Text(short(m)) } }
+                }
+            }
     }
 }
