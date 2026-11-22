@@ -4,12 +4,13 @@ import MarleyCore
 
 struct ReflectView: View {
     @Environment(AppStore.self) private var store
+    @State private var path: [String] = []
 
     var body: some View {
         let d = store.data, today = store.today
         let m = store.selectedMonth == Ledger.startMonth ? (d.months.first { $0 != Ledger.startMonth } ?? store.selectedMonth) : store.selectedMonth
         let months = d.months.filter { $0 != Ledger.startMonth && $0 <= String(today.prefix(7)) }
-        NavigationStack {
+        NavigationStack(path: $path) {
             ScrollView {
                 VStack(spacing: 16) {
                     card("Saldo de \(Day.monthLabel(m))", systemImage: "eurosign.circle.fill") {
@@ -31,7 +32,7 @@ struct ReflectView: View {
                             }
                         }
                     }
-                    SpendingBreakdownCard(month: m)
+                    SpendingBreakdownCard(month: m) { cat in path.append(cat) }
                     card("Entradas vs saídas", systemImage: "chart.bar.fill") {
                         let flows = months.map { mo in Flow(month: mo, income: income(d, mo, today), expense: expense(d, mo, today)) }
                         Chart {
@@ -65,6 +66,8 @@ struct ReflectView: View {
             }
             .background(Color(.systemGroupedBackground))
             .navigationTitle("Reflect")
+            // subcategoria tocada no card de gastos → mesma tela de detalhe do Budget; "voltar" volta ao Reflect
+            .navigationDestination(for: String.self) { CategoryDetailView(cat: $0) }
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .principal) { MonthMenu(hideFebruary: true) }

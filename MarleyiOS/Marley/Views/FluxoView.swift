@@ -83,7 +83,7 @@ struct FluxoView: View {
             Button {
                 if !store.toggleCleared(t.id) { clearing = t }
             } label: {
-                Label(t.cleared ? "Descompensar" : "Compensar", systemImage: t.cleared ? "circle" : "checkmark.circle")
+                Label(t.cleared ? "Desfazer" : "Reconciliar", systemImage: t.cleared ? "arrow.uturn.backward.circle" : "checkmark.circle")
             }
             .tint(.moneyIn)
         }
@@ -154,11 +154,11 @@ struct ClearOnDateSheet: View {
                     Text("\(displayDescription(txn.desc)) estava agendada para \(Day.short(txn.date)). Em que dia ela aconteceu?")
                 }
             }
-            .navigationTitle("Compensar")
+            .navigationTitle("Reconciliar")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancelar") { dismiss() } }
-                ToolbarItem(placement: .confirmationAction) { Button("Compensar") { store.clear(txn.id, on: Day.string(date)); dismiss() } }
+                ToolbarItem(placement: .confirmationAction) { Button("Reconciliar") { store.clear(txn.id, on: Day.string(date)); dismiss() } }
             }
         }
         .presentationDetents([.medium])

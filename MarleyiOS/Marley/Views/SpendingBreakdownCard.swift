@@ -16,6 +16,8 @@ extension Color {
 struct SpendingBreakdownCard: View {
     @Environment(AppStore.self) private var store
     let month: String
+    /// Abre o detalhe de uma subcategoria (a tela do Budget), empilhado na aba atual.
+    var openCategory: (String) -> Void = { _ in }
     @State private var group: String?
     @State private var selectedAngle: Double?
 
@@ -64,7 +66,7 @@ struct SpendingBreakdownCard: View {
                 .frame(height: 220)
                 .overlay {
                     VStack(spacing: 2) {
-                        Text(group == nil ? "Toque num grupo" : "\(s.count) subcategoria\(s.count == 1 ? "" : "s")")
+                        Text(group == nil ? "Toque num grupo" : "Toque para ver detalhes")
                             .font(.caption).foregroundStyle(.secondary)
                     }
                 }
@@ -77,10 +79,16 @@ struct SpendingBreakdownCard: View {
         .padding()
         .background(.background, in: .rect(cornerRadius: 20))
         .onChange(of: selectedAngle) { _, angle in
-            // tocar numa fatia da pizza geral abre aquele grupo
-            guard group == nil, let angle else { return }
+            // fatia da pizza geral abre o grupo; fatia de subcategoria abre o detalhe dela
+            guard let angle else { return }
             var acc = 0.0
-            for x in s { acc += x.value; if angle <= acc { withAnimation(.snappy) { group = x.name }; break } }
+            for x in s {
+                acc += x.value
+                if angle <= acc {
+                    if group == nil { withAnimation(.snappy) { group = x.name } } else { openCategory(x.name) }
+                    break
+                }
+            }
             selectedAngle = nil
         }
         .onChange(of: month) { _, _ in group = nil }
@@ -93,14 +101,13 @@ struct SpendingBreakdownCard: View {
             Spacer()
             Text(Money.eur(x.value)).monospacedDigit()
             Text("\(Int((x.value / total * 100).rounded()))%").foregroundStyle(.secondary).frame(width: 40, alignment: .trailing)
-            if group == nil { Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.tertiary) }
+            Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.tertiary)
         }
         .font(.subheadline)
         .contentShape(.rect)
-        if group == nil {
-            Button { withAnimation(.snappy) { group = x.name } } label: { content }.buttonStyle(.plain)
-        } else {
-            content
-        }
+        Button {
+            if group == nil { withAnimation(.snappy) { group = x.name } } else { openCategory(x.name) }
+        } label: { content }
+        .buttonStyle(.plain)
     }
 }

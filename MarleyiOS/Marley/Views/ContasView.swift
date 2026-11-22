@@ -23,7 +23,7 @@ struct ContasView: View {
                         .pickerStyle(.segmented)
                     HStack(spacing: 10) {
                         StatCard(title: "Working", value: s.working)
-                        StatCard(title: "Compensado", value: s.cleared, tint: .moneyIn)
+                        StatCard(title: "Reconciliado", value: s.cleared, tint: .moneyIn)
                         StatCard(title: "Pendente", value: s.uncleared, signed: true)
                     }
                 }
@@ -44,7 +44,7 @@ struct ContasView: View {
                 ToolbarItemGroup(placement: .topBarTrailing) {
                     Menu {
                         Button { reconciling = true } label: { Label("Reconciliar \(acct)", systemImage: "scale.3d") }
-                        Toggle(isOn: $hideCleared) { Label("Esconder compensadas", systemImage: "eye.slash") }
+                        Toggle(isOn: $hideCleared) { Label("Esconder reconciliadas", systemImage: "eye.slash") }
                     } label: { Image(systemName: "ellipsis") }
                     Button { editor = .new(acct: acct) } label: { Image(systemName: "plus") }
                 }
@@ -64,7 +64,7 @@ struct ContasView: View {
             .swipeActions(edge: .leading) {
                 if !r.txn.locked {
                     Button { if !store.toggleCleared(r.txn.id) { clearing = r.txn } } label: {
-                        Label(r.txn.cleared ? "Descompensar" : "Compensar", systemImage: r.txn.cleared ? "circle" : "checkmark.circle")
+                        Label(r.txn.cleared ? "Desfazer" : "Reconciliar", systemImage: r.txn.cleared ? "arrow.uturn.backward.circle" : "checkmark.circle")
                     }.tint(.moneyIn)
                 }
             }
@@ -88,14 +88,14 @@ struct ReconcileSheet: View {
             VStack(spacing: 20) {
                 switch step {
                 case 1:
-                    Text("Saldo compensado da \(acct)").font(.headline).foregroundStyle(.secondary)
+                    Text("Saldo reconciliado da \(acct)").font(.headline).foregroundStyle(.secondary)
                     Text(Money.eur(cleared)).font(.system(size: 40, weight: .bold).monospacedDigit())
                     Text("Bate com o saldo do banco agora?").foregroundStyle(.secondary)
                     HStack(spacing: 12) {
                         Button("Não") { step = 2 }.buttonStyle(.glass).controlSize(.large)
                         Button("Sim, bate") {
                             store.reconcileConfirmed(acct)
-                            resultText = "Saldo confirmado: \(Money.eur(cleared)). As transações compensadas foram bloqueadas 🔒."
+                            resultText = "Saldo confirmado: \(Money.eur(cleared)). As transações reconciliadas foram bloqueadas 🔒."
                             step = 3
                         }.buttonStyle(.glassProminent).controlSize(.large)
                     }
