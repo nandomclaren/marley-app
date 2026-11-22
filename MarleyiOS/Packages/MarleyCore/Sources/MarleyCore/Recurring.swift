@@ -66,9 +66,12 @@ public enum Recurring {
         if scope != .this { ids.formUnion(others(d, t, scope).map(\.id)) }
         if scope == .all {
             // reconciliadas ficam, mas deixam de ser recorrentes (senão a série recomeçaria a partir delas)
-            for keep in series(d, t) where keep.locked && keep.id != t.id {
+            let kept = series(d, t).filter { $0.locked && $0.id != t.id }
+            for keep in kept {
                 d.update(keep.id) { x in x.recurring = false; if x.style == "fixed" { x.style = "normal" } }
             }
+            // salário/crítica são recorrentes pelo estilo: impede a cópia para o mês seguinte à última que ficou
+            if let last = kept.last { d.addSkipRecurring(Day.nextMonth(last.month), last.desc) }
         }
         Ledger.delete(&d, ids: ids) // anota skipRecurring para cada mês apagado
     }

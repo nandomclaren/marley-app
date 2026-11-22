@@ -67,6 +67,17 @@ final class RecurringTests: XCTestCase {
         XCTAssertEqual(netflix(d).count, 1)
         XCTAssertNotNil(d.txn(50)); XCTAssertNotNil(d.txn(51))
     }
+    func testDeleteAllStopsASalarySeriesToo() {
+        // salário é recorrente pelo estilo; o de outubro está reconciliado
+        var d = makeData([T(1, "2026-10-26", "Salário", in_: 8000, style: "salary", locked: true),
+                          T(2, "2026-11-26", "Salário", in_: 8000, style: "salary"),
+                          T(3, "2026-12-26", "Salário", in_: 8000, style: "salary")],
+                         months: ["2026-10", "2026-11", "2026-12", "2027-01"])
+        Recurring.delete(&d, d.txn(2)!, scope: .all)
+        XCTAssertEqual(d.txns.map(\.id), [1])
+        for m in ["2026-11", "2026-12", "2027-01"] { Ledger.generateRecurring(&d, month: m) }
+        XCTAssertEqual(d.txns.map(\.id), [1])
+    }
     func testDeleteThisOnlySkipsJustThatMonth() {
         var d = data()
         Recurring.delete(&d, d.txn(3)!, scope: .this)
