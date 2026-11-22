@@ -94,6 +94,7 @@ struct AmountField: View {
     var autoActivate = false
     var onCommit: () -> Void = {}
     @State private var id = UUID()
+    @State private var didAutoActivate = false
 
     var body: some View {
         if let keypad {
@@ -116,7 +117,8 @@ struct AmountField: View {
             }
             .contentShape(.rect)
             .onTapGesture { activate(keypad) }
-            .onAppear { if autoActivate { activate(keypad) } }
+            // só na primeira vez: numa lista o campo "reaparece" ao rolar, e não pode roubar o foco de outro campo
+            .onAppear { if autoActivate && !didAutoActivate { didAutoActivate = true; activate(keypad) } }
             .accessibilityAddTraits(.isButton)
             .accessibilityLabel(placeholder)
             .accessibilityValue(text)

@@ -19,6 +19,19 @@ struct TxnEditor: View {
     @State private var deleting: Txn?
     @State private var catTouched = false
     @State private var askScope = false
+    @State private var confirmDiscard = false
+    @State private var initial: Snapshot?
+
+    /// O que está no formulário, para saber se algo mudou desde que ele abriu.
+    struct Snapshot: Equatable {
+        var isIncome: Bool, amountText: String, desc: String, date: Date, acct: String, installments: Int
+        var recurring: Bool, uncertain: Bool, cat: String, notes: String
+    }
+    var snapshot: Snapshot {
+        Snapshot(isIncome: isIncome, amountText: amountText, desc: desc, date: date, acct: acct, installments: installments,
+                 recurring: recurring, uncertain: uncertain, cat: cat, notes: notes)
+    }
+    var dirty: Bool { initial != nil && snapshot != initial }
     @FocusState private var focus: Field?
     enum Field { case amount, desc }
 
@@ -85,7 +98,7 @@ struct TxnEditor: View {
             .navigationTitle(editing == nil ? "Nova transação" : "Editar")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Cancelar") { dismiss() } }
+                ToolbarItem(placement: .cancellationAction) { Button("Cancelar") { if dirty { confirmDiscard = true } else { dismiss() } } }
                 ToolbarItem(placement: .confirmationAction) { Button("Salvar") { save() }.disabled(!valid) }
             }
             .deleteConfirmation(for: $deleting) { dismiss() }
@@ -102,6 +115,11 @@ struct TxnEditor: View {
                 Text("Aplicar a alteração a quais lançamentos de \"\(displayDescription(current?.desc ?? ""))\"? Só os campos que você mudou passam para os outros meses. Reconciliadas 🔒 não mudam.")
             }
             .onAppear(perform: load)
+            .confirmDismiss(when: dirty) { confirmDiscard = true }
+            .confirmationDialog("Descartar alterações?", isPresented: $confirmDiscard, titleVisibility: .visible) {
+                Button("Descartar", role: .destructive) { dismiss() }
+                Button("Continuar editando", role: .cancel) {}
+            } message: { Text("O que você preencheu nesta transação será perdido.") }
             .onChange(of: installments) { _, n in if n > 1 { recurring = false } }
         }
     }
@@ -127,6 +145,8 @@ struct TxnEditor: View {
     }
 
     func load() {
+        defer { if initial == nil { initial = snapshot } }
+        guard initial == nil else { return } // onAppear pode repetir; só carrega uma vez
         if let t = editing {
             isIncome = t.isIncome
             amountText = t.amount < 0.005 ? "" : String(format: "%.2f", t.amount).replacingOccurrences(of: ".", with: ",")
