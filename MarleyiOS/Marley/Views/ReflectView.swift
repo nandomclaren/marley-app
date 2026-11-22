@@ -35,14 +35,21 @@ struct ReflectView: View {
                     }
                     SpendingBreakdownCard(month: m) { cat in path.append(cat) }
                     card("Entradas vs saídas", systemImage: "chart.bar.fill") {
-                        let flows = months.map { mo in Flow(month: mo, income: income(d, mo, today), expense: expense(d, mo, today)) }
+                        // cada barra empilha o que já aconteceu (cor cheia) e o que ainda é projetado (cor clara)
+                        let flows = months.map { mo in
+                            Flow(month: mo, incomePast: income(d, mo, today, future: false), incomeFuture: income(d, mo, today, future: true),
+                                 expensePast: expense(d, mo, today, future: false), expenseFuture: expense(d, mo, today, future: true))
+                        }
                         Chart {
                             ForEach(flows) { f in
-                                BarMark(x: .value("Mês", short(f.month)), y: .value("€", f.income)).foregroundStyle(by: .value("Tipo", "Entradas")).position(by: .value("Tipo", "Entradas"))
-                                BarMark(x: .value("Mês", short(f.month)), y: .value("€", f.expense)).foregroundStyle(by: .value("Tipo", "Saídas")).position(by: .value("Tipo", "Saídas"))
+                                BarMark(x: .value("Mês", short(f.month)), y: .value("€", f.incomePast)).foregroundStyle(by: .value("Tipo", "Entradas")).position(by: .value("Grupo", "Entradas"))
+                                BarMark(x: .value("Mês", short(f.month)), y: .value("€", f.incomeFuture)).foregroundStyle(by: .value("Tipo", "Entradas previstas")).position(by: .value("Grupo", "Entradas"))
+                                BarMark(x: .value("Mês", short(f.month)), y: .value("€", f.expensePast)).foregroundStyle(by: .value("Tipo", "Saídas")).position(by: .value("Grupo", "Saídas"))
+                                BarMark(x: .value("Mês", short(f.month)), y: .value("€", f.expenseFuture)).foregroundStyle(by: .value("Tipo", "Saídas previstas")).position(by: .value("Grupo", "Saídas"))
                             }
                         }
-                        .chartForegroundStyleScale(["Entradas": Color.moneyIn, "Saídas": Color.moneyOut])
+                        .chartForegroundStyleScale(["Entradas": Color.moneyIn, "Entradas previstas": Color.moneyIn.opacity(0.3),
+                                                    "Saídas": Color.moneyOut, "Saídas previstas": Color.moneyOut.opacity(0.3)])
                         .frame(height: 200)
                     }
                     card("Patrimônio", systemImage: "building.columns.fill") {
@@ -104,10 +111,14 @@ struct ReflectView: View {
     }
 
     /// Categorized spending up to today, by group (future-dated spending excluded, like the web Reflect).
-    struct Flow: Identifiable { let month: String; let income: Double; let expense: Double; var id: String { month } }
+    struct Flow: Identifiable { let month: String; let incomePast: Double; let incomeFuture: Double; let expensePast: Double; let expenseFuture: Double; var id: String { month } }
     struct Point: Identifiable { let month: String; let value: Double; var id: String { month } }
 
     /// Entradas/saídas do mês inteiro, incluindo as agendadas (como os cards do Fluxo e o Reflect do web).
-    func income(_ d: AppData, _ m: String, _ today: String) -> Double { d.txns.filter { $0.month == m && $0.in_ > 0 && $0.style != "opening" && $0.acct != "—" }.reduce(0) { $0 + $1.in_ } }
-    func expense(_ d: AppData, _ m: String, _ today: String) -> Double { d.txns.filter { $0.month == m && $0.out > 0 && $0.style != "opening" }.reduce(0) { $0 + $1.out } }
+    func income(_ d: AppData, _ m: String, _ today: String, future: Bool) -> Double {
+        d.txns.filter { $0.month == m && $0.in_ > 0 && $0.style != "opening" && $0.acct != "—" && ($0.date > today) == future }.reduce(0) { $0 + $1.in_ }
+    }
+    func expense(_ d: AppData, _ m: String, _ today: String, future: Bool) -> Double {
+        d.txns.filter { $0.month == m && $0.out > 0 && $0.style != "opening" && ($0.date > today) == future }.reduce(0) { $0 + $1.out }
+    }
 }
