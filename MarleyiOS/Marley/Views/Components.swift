@@ -150,8 +150,5 @@ extension View {
     }
 }
 
-func parseAmount(_ s: String) -> Double? {
-    let t = s.replacingOccurrences(of: " ", with: "").replacingOccurrences(of: "€", with: "").replacingOccurrences(of: ",", with: ".")
-    guard let v = Double(t), v.isFinite else { return nil }
-    return Money.round2(v)
-}
+/// Valor digitado num campo, já com a conta feita ("200-100" → 100). nil se incompleto/inválido.
+func parseAmount(_ s: String) -> Double? { Calc.evaluate(s) }

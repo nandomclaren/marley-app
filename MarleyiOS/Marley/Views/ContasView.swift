@@ -101,8 +101,8 @@ struct ReconcileSheet: View {
                     }
                 case 2:
                     Text("Qual é o saldo no banco?").font(.headline)
-                    TextField("0,00", text: $bankText).keyboardType(.numbersAndPunctuation)
-                        .font(.system(size: 34, weight: .bold).monospacedDigit()).multilineTextAlignment(.center)
+                    AmountField(placeholder: "0,00", text: $bankText, allowNegative: true,
+                                font: .system(size: 34, weight: .bold), alignment: .center, autoActivate: true)
                     if let v = parseAmount(bankText) {
                         let diff = v - cleared
                         Text(abs(diff) < 0.005 ? "Sem diferença." : "Vai criar uma correção de \(Money.eur(diff, signed: true)).").foregroundStyle(.secondary)
@@ -123,6 +123,7 @@ struct ReconcileSheet: View {
             }
             .padding(24)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .keypadHost()
             .keyboardDismissable()
             .navigationTitle("Reconciliar \(acct)")
             .navigationBarTitleDisplayMode(.inline)

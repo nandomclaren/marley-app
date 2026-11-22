@@ -42,9 +42,8 @@ struct TxnEditor: View {
                 Section {
                     HStack {
                         Text("€").foregroundStyle(.secondary)
-                        TextField(installments > 1 ? "Valor total" : "Valor", text: $amountText)
-                            .keyboardType(.decimalPad).font(.title2.weight(.semibold).monospacedDigit())
-                            .focused($focus, equals: .amount)
+                        AmountField(placeholder: installments > 1 ? "Valor total" : "Valor", text: $amountText,
+                                    font: .title2.weight(.semibold), autoActivate: editing == nil)
                     }
                     TextField("Descrição", text: $desc).focused($focus, equals: .desc)
                         .submitLabel(.done).onSubmit { focus = nil }
@@ -80,6 +79,7 @@ struct TxnEditor: View {
                     }
                 }
             }
+            .keypadHost()
             .keyboardDismissable()
             .navigationTitle(editing == nil ? "Nova transação" : "Editar")
             .navigationBarTitleDisplayMode(.inline)
@@ -121,7 +121,6 @@ struct TxnEditor: View {
             recurring = t.recurring || t.style == "fixed"; uncertain = t.isUncertain; cat = t.cat; notes = t.notes; catTouched = true
         } else {
             if case .new(let a?) = target { acct = a }
-            focus = .amount
         }
     }
 

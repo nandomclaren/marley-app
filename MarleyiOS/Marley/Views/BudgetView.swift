@@ -88,7 +88,6 @@ struct CategoryDetailView: View {
     let cat: String
     @State private var budgetText = ""
     @State private var editor: EditorTarget?
-    @FocusState private var editingBudget: Bool
 
     var body: some View {
         let m = store.selectedMonth
@@ -109,9 +108,8 @@ struct CategoryDetailView: View {
                 HStack {
                     Text("Orçado em \(Day.monthLabel(m))")
                     Spacer()
-                    TextField("0,00", text: $budgetText).keyboardType(.numbersAndPunctuation).multilineTextAlignment(.trailing)
-                        .focused($editingBudget).frame(maxWidth: 120).monospacedDigit()
-                        .onSubmit(saveBudget)
+                    AmountField(placeholder: "0,00", text: $budgetText, allowNegative: true, alignment: .trailing, onCommit: saveBudget)
+                        .frame(maxWidth: 160)
                 }
                 LabeledContent("Gasto", value: Money.eur(line.spent))
             }
@@ -127,10 +125,10 @@ struct CategoryDetailView: View {
                 if txns.isEmpty { Text("Nenhuma neste mês.").foregroundStyle(.secondary) }
             }
         }
+        .keypadHost()
         .keyboardDismissable()
         .navigationTitle(cat)
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar { ToolbarItem(placement: .confirmationAction) { if editingBudget { Button("Salvar", action: saveBudget) } } }
         .onAppear { budgetText = fmt(line.budgeted) }
         .onChange(of: store.selectedMonth) { _, _ in budgetText = fmt(store.data.budget(store.selectedMonth, cat)) }
         .sheet(item: $editor) { TxnEditor(target: $0) }
@@ -138,7 +136,6 @@ struct CategoryDetailView: View {
     /// Zero fica vazio (o placeholder "0,00" aparece em cinza), para digitar direto sem apagar antes.
     func fmt(_ v: Double) -> String { abs(v) < 0.005 ? "" : String(format: "%.2f", v).replacingOccurrences(of: ".", with: ",") }
     func saveBudget() {
-        editingBudget = false
         let trimmed = budgetText.trimmingCharacters(in: .whitespaces)
         guard let v = trimmed.isEmpty ? 0 : parseAmount(trimmed) else { budgetText = fmt(store.data.budget(store.selectedMonth, cat)); return }
         store.setBudget(store.selectedMonth, cat, v)
@@ -161,9 +158,10 @@ struct MoveMoneySheet: View {
                 Section {
                     Picker("De", selection: $from) { ForEach(Categories.all, id: \.self) { Text($0).tag($0) } }
                     Picker("Para", selection: $to) { ForEach(Categories.all, id: \.self) { Text($0).tag($0) } }
-                    TextField("Valor", text: $amountText).keyboardType(.decimalPad)
+                    AmountField(placeholder: "Valor", text: $amountText, autoActivate: true)
                 } footer: { Text("Move orçado de \(Day.monthLabel(store.selectedMonth)) entre categorias.") }
             }
+            .keypadHost()
             .keyboardDismissable()
             .navigationTitle("Mover dinheiro")
             .navigationBarTitleDisplayMode(.inline)
