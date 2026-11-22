@@ -9,7 +9,8 @@ struct ReflectView: View {
     var body: some View {
         let d = store.data, today = store.today
         let m = store.selectedMonth == Ledger.startMonth ? (d.months.first { $0 != Ledger.startMonth } ?? store.selectedMonth) : store.selectedMonth
-        let months = d.months.filter { $0 != Ledger.startMonth && $0 <= String(today.prefix(7)) }
+        let months = d.months.filter { $0 != Ledger.startMonth }
+        let pastMonths = months.filter { $0 <= String(today.prefix(7)) }
         NavigationStack(path: $path) {
             ScrollView {
                 VStack(spacing: 16) {
@@ -48,7 +49,7 @@ struct ReflectView: View {
                         let b = store.balancesToday
                         Text(Money.eur(b.values.reduce(0, +))).font(.system(size: 32, weight: .bold).monospacedDigit())
                         HStack { ForEach(Accounts.all, id: \.self) { a in VStack(alignment: .leading) { Text(a).font(.caption).foregroundStyle(.secondary); Text(Money.eur(b[a] ?? 0)).font(.subheadline.monospacedDigit()) }.frame(maxWidth: .infinity, alignment: .leading) } }
-                        let nw = months.map { mo in Point(month: mo, value: Ledger.balances(d, asOf: min(today, mo + "-31")).values.reduce(0, +)) }
+                        let nw = pastMonths.map { mo in Point(month: mo, value: Ledger.balances(d, asOf: min(today, mo + "-31")).values.reduce(0, +)) }
                         Chart(nw) { p in
                             LineMark(x: .value("Mês", short(p.month)), y: .value("€", p.value)).interpolationMethod(.catmullRom)
                             PointMark(x: .value("Mês", short(p.month)), y: .value("€", p.value))
@@ -106,6 +107,7 @@ struct ReflectView: View {
     struct Flow: Identifiable { let month: String; let income: Double; let expense: Double; var id: String { month } }
     struct Point: Identifiable { let month: String; let value: Double; var id: String { month } }
 
-    func income(_ d: AppData, _ m: String, _ today: String) -> Double { d.txns.filter { $0.month == m && $0.in_ > 0 && $0.style != "opening" && $0.date <= today }.reduce(0) { $0 + $1.in_ } }
-    func expense(_ d: AppData, _ m: String, _ today: String) -> Double { d.txns.filter { $0.month == m && $0.out > 0 && $0.style != "opening" && $0.date <= today }.reduce(0) { $0 + $1.out } }
+    /// Entradas/saídas do mês inteiro, incluindo as agendadas (como os cards do Fluxo e o Reflect do web).
+    func income(_ d: AppData, _ m: String, _ today: String) -> Double { d.txns.filter { $0.month == m && $0.in_ > 0 && $0.style != "opening" && $0.acct != "—" }.reduce(0) { $0 + $1.in_ } }
+    func expense(_ d: AppData, _ m: String, _ today: String) -> Double { d.txns.filter { $0.month == m && $0.out > 0 && $0.style != "opening" }.reduce(0) { $0 + $1.out } }
 }
