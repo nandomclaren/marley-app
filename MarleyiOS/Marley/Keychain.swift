@@ -1,5 +1,6 @@
 import Foundation
 import Security
+import MarleyCore
 
 /// Secrets (GitHub token, Anthropic key) live in the iOS Keychain, never in files or the Gist.
 enum Keychain {
