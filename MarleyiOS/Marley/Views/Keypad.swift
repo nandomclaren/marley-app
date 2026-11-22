@@ -36,7 +36,11 @@ final class KeypadController {
         invalid = false
         var t = text
         switch k {
-        case .digit(let d): t += d
+        case .digit(let d):
+            // no máximo 2 casas depois da vírgula (centavos)
+            let segment = t.split(whereSeparator: { Calc.operators.contains($0) }).last.map(String.init) ?? ""
+            if !Calc.operators.contains(t.last ?? "+"), let comma = segment.firstIndex(of: ","), segment[segment.index(after: comma)...].count >= 2 { return }
+            t += d
         case .comma:
             let segment = t.split(whereSeparator: { Calc.operators.contains($0) }).last.map(String.init) ?? ""
             if t.isEmpty || Calc.operators.contains(t.last!) { t += "0," }
@@ -155,7 +159,7 @@ struct CalculatorKeypad: View {
                 HStack(spacing: 8) { ForEach(row, id: \.self) { key($0) } }
             }
             HStack(spacing: 8) {
-                Button { keypad.press(.equals) } label: { Text("=").frame(maxWidth: .infinity, minHeight: 44) }
+                Button { keypad.press(.equals) } label: { Text("=").foregroundStyle(.primary).frame(maxWidth: .infinity, minHeight: 44) }
                     .buttonStyle(.glass)
                 Button { keypad.confirm() } label: { Text("OK").fontWeight(.semibold).frame(maxWidth: .infinity, minHeight: 44) }
                     .buttonStyle(.glassProminent)
@@ -163,7 +167,9 @@ struct CalculatorKeypad: View {
             .font(.title3)
         }
         .padding(12)
-        .glassEffect(.regular, in: .rect(cornerRadius: 28))
+        // fundo sólido como o teclado do sistema: o vidro das teclas fica legível seja o que for que está atrás
+        .background(Color(.secondarySystemBackground), in: .rect(cornerRadius: 28))
+        .shadow(color: .black.opacity(0.25), radius: 16, y: 4)
         .padding(.horizontal, 8)
         .padding(.bottom, 4)
         .sensoryFeedback(.selection, trigger: keypad.tapCount)
@@ -173,11 +179,11 @@ struct CalculatorKeypad: View {
         Button { keypad.press(k) } label: {
             Group {
                 switch k {
-                case .digit(let d): Text(d)
-                case .comma: Text(",")
-                case .op(let o): Text(o).foregroundStyle(Color.marleyAccent)
-                case .back: Image(systemName: "delete.left")
-                case .equals: Text("=")
+                case .digit(let d): Text(d).foregroundStyle(.primary)
+                case .comma: Text(",").foregroundStyle(.primary)
+                case .op(let o): Text(o).fontWeight(.bold).foregroundStyle(Color.marleyAccent)
+                case .back: Image(systemName: "delete.left").foregroundStyle(.primary)
+                case .equals: Text("=").foregroundStyle(.primary)
                 }
             }
             .font(.title2.weight(.medium))
