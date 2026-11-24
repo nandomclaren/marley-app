@@ -74,7 +74,7 @@ struct AvailablePill: View {
     let value: Double
     let funded: Double
     var body: some View {
-        let color: Color = value < -0.005 ? .moneyOut : abs(value) < 0.005 ? .gray : (funded > 0 && value / funded < 0.14) ? .orange : .moneyIn
+        let color = availableColor(value, funded: funded)
         Text(Money.eur(value))
             .font(.subheadline.weight(.semibold).monospacedDigit())
             .padding(.horizontal, 10).padding(.vertical, 4)

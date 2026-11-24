@@ -33,7 +33,7 @@ struct TxnEditor: View {
     }
     var dirty: Bool { initial != nil && snapshot != initial }
     @FocusState private var focus: Field?
-    enum Field { case amount, desc }
+    enum Field { case amount, desc, notes }
 
     var editing: Txn? { if case .edit(let t) = target { return t }; return nil }
     var amount: Double? { parseAmount(amountText).flatMap { $0 > 0 ? $0 : nil } }
@@ -44,6 +44,7 @@ struct TxnEditor: View {
 
     var body: some View {
         NavigationStack {
+          ScrollViewReader { proxy in
             Form {
                 Section {
                     Picker("Tipo", selection: $isIncome) {
@@ -54,21 +55,26 @@ struct TxnEditor: View {
                     .listRowBackground(Color.clear).listRowInsets(EdgeInsets())
                 }
                 Section {
-                    HStack {
-                        Text("€").foregroundStyle(.secondary)
-                        AmountField(placeholder: installments > 1 ? "Valor total" : "Valor", text: $amountText,
-                                    font: .title2.weight(.semibold), autoActivate: editing == nil)
-                    }
                     TextField("Descrição", text: $desc).focused($focus, equals: .desc)
                         .submitLabel(.done).onSubmit { focus = nil }
                     if !suggestions.isEmpty {
                         ScrollView(.horizontal, showsIndicators: false) {
                             HStack {
                                 ForEach(suggestions, id: \.self) { s in
-                                    Button(displayDescription(s)) { pick(s) }.buttonStyle(.glass).font(.caption)
+                                    Button { pick(s) } label: {
+                                        Text(displayDescription(s)).font(.subheadline).foregroundStyle(.primary)
+                                            .padding(.horizontal, 12).padding(.vertical, 6)
+                                            .background(Color(.tertiarySystemFill), in: .capsule)
+                                    }
+                                    .buttonStyle(.plain)
                                 }
                             }
                         }
+                    }
+                    HStack {
+                        Text("€").foregroundStyle(.secondary)
+                        AmountField(placeholder: installments > 1 ? "Valor total" : "Valor", text: $amountText,
+                                    font: .title2.weight(.semibold))
                     }
                     DatePicker("Data", selection: $date, displayedComponents: .date)
                     Picker("Conta", selection: $acct) { ForEach(Accounts.all, id: \.self) { Text($0).tag($0) } }
@@ -84,7 +90,7 @@ struct TxnEditor: View {
                     }
                     Toggle("Recorrente (todo mês)", isOn: $recurring).disabled(installments > 1)
                 } footer: { if let hint = installmentHint { Text(hint) } }
-                Section { TextField("Notas", text: $notes, axis: .vertical) }
+                Section { TextField("Notas", text: $notes, axis: .vertical).focused($focus, equals: .notes) }.id("notes")
                 if let t = editing {
                     Section {
                         Button("Apagar transação", role: .destructive) { deleting = t }
@@ -93,6 +99,12 @@ struct TxnEditor: View {
                     }
                 }
             }
+            // Notas é o último campo: depois que o teclado sobe, rola até ele para não ficar escondido
+            .onChange(of: focus) { _, f in
+                guard f == .notes else { return }
+                Task { try? await Task.sleep(for: .milliseconds(350)); withAnimation { proxy.scrollTo("notes", anchor: .center) } }
+            }
+          }
             .keypadHost()
             .keyboardDismissable()
             .navigationTitle(editing == nil ? "Nova transação" : "Editar")
@@ -154,6 +166,8 @@ struct TxnEditor: View {
             recurring = t.recurring || t.style == "fixed"; uncertain = t.isUncertain; cat = t.cat; notes = t.notes; catTouched = true
         } else {
             if case .new(let a?) = target { acct = a }
+            // começa pela descrição (como no web); o valor abre a calculadora ao ser tocado
+            Task { try? await Task.sleep(for: .milliseconds(450)); focus = .desc }
         }
     }
 

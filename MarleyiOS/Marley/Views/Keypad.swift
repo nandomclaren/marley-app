@@ -161,10 +161,10 @@ struct CalculatorKeypad: View {
                 HStack(spacing: 8) { ForEach(row, id: \.self) { key($0) } }
             }
             HStack(spacing: 8) {
-                Button { keypad.press(.equals) } label: { Text("=").foregroundStyle(.primary).frame(maxWidth: .infinity, minHeight: 44) }
-                    .buttonStyle(.glass)
-                Button { keypad.confirm() } label: { Text("OK").fontWeight(.semibold).frame(maxWidth: .infinity, minHeight: 44) }
-                    .buttonStyle(.glassProminent)
+                Button { keypad.press(.equals) } label: { Text("=").frame(maxWidth: .infinity, minHeight: 48) }
+                    .buttonStyle(KeyStyle())
+                Button { keypad.confirm() } label: { Text("OK").fontWeight(.semibold).frame(maxWidth: .infinity, minHeight: 48) }
+                    .buttonStyle(KeyStyle(prominent: true))
             }
             .font(.title3)
         }
@@ -191,7 +191,21 @@ struct CalculatorKeypad: View {
             .font(.title2.weight(.medium))
             .frame(maxWidth: .infinity, minHeight: 48)
         }
-        .buttonStyle(.glass)
+        .buttonStyle(KeyStyle())
+    }
+}
+
+/// Tecla sólida (como o teclado do sistema): o texto não herda a cor de destaque e fica legível em claro e escuro.
+struct KeyStyle: ButtonStyle {
+    var prominent = false
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .foregroundStyle(prominent ? Color.white : Color.primary)
+            .background(prominent ? Color(red: 0x58 / 255, green: 0x56 / 255, blue: 0xD6 / 255) : Color(.tertiarySystemBackground),
+                        in: .rect(cornerRadius: 14))
+            .opacity(configuration.isPressed ? 0.6 : 1)
+            .scaleEffect(configuration.isPressed ? 0.96 : 1)
+            .animation(.easeOut(duration: 0.1), value: configuration.isPressed)
     }
 }
 

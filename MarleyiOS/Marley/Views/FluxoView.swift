@@ -74,7 +74,7 @@ struct FluxoView: View {
             .onTapGesture { editor = .edit(r.txn) }
             .swipeActions(edge: .leading) { clearAction(r.txn) }
             .swipeActions(edge: .trailing) {
-                Button(role: .destructive) { deleting = r.txn } label: { Label("Apagar", systemImage: "trash") }
+                Button { deleting = r.txn } label: { Label("Apagar", systemImage: "trash") }.tint(.red) // sem role destrutivo: só apaga depois da confirmação
             }
     }
 

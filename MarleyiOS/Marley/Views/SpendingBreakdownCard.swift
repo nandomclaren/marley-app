@@ -19,7 +19,6 @@ struct SpendingBreakdownCard: View {
     /// Abre o detalhe de uma subcategoria (a tela do Budget), empilhado na aba atual.
     var openCategory: (String) -> Void = { _ in }
     @State private var group: String?
-    @State private var selectedAngle: Double?
 
     struct Slice: Identifiable { let name: String; let value: Double; let color: Color; var id: String { name } }
 
@@ -62,7 +61,18 @@ struct SpendingBreakdownCard: View {
                         .cornerRadius(4)
                         .foregroundStyle(x.color)
                 }
-                .chartAngleSelection(value: $selectedAngle)
+                // toque simples na fatia (calcula qual pelo ângulo); evita mudar os dados no meio do gesto de seleção do gráfico
+                .chartOverlay { proxy in
+                    GeometryReader { geo in
+                        Rectangle().fill(.clear).contentShape(Rectangle())
+                            .onTapGesture { location in
+                                guard let anchor = proxy.plotFrame else { return }
+                                if let x = slice(at: location, in: geo[anchor], slices: s, total: total) {
+                                    DispatchQueue.main.async { tapped(x) }
+                                }
+                            }
+                    }
+                }
                 .frame(height: 220)
                 .overlay {
                     VStack(spacing: 2) {
@@ -78,20 +88,25 @@ struct SpendingBreakdownCard: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding()
         .background(.background, in: .rect(cornerRadius: 20))
-        .onChange(of: selectedAngle) { _, angle in
-            // fatia da pizza geral abre o grupo; fatia de subcategoria abre o detalhe dela
-            guard let angle else { return }
-            var acc = 0.0
-            for x in s {
-                acc += x.value
-                if angle <= acc {
-                    if group == nil { withAnimation(.snappy) { group = x.name } } else { openCategory(x.name) }
-                    break
-                }
-            }
-            selectedAngle = nil
-        }
         .onChange(of: month) { _, _ in group = nil }
+    }
+
+    /// Grupo → mostra as subcategorias dele; subcategoria → abre o detalhe da categoria.
+    func tapped(_ x: Slice) {
+        if group == nil { withAnimation(.snappy) { group = x.name } } else { openCategory(x.name) }
+    }
+
+    /// Qual fatia está sob o toque. A pizza começa no topo e segue no sentido horário; só conta o anel colorido.
+    func slice(at p: CGPoint, in frame: CGRect, slices: [Slice], total: Double) -> Slice? {
+        let dx = p.x - frame.midX, dy = p.y - frame.midY
+        let r = (dx * dx + dy * dy).squareRoot(), outer = min(frame.width, frame.height) / 2
+        guard total > 0, r <= outer + 6, r >= outer * 0.62 - 6 else { return nil }
+        var angle = atan2(dx, -dy)
+        if angle < 0 { angle += 2 * .pi }
+        let target = Double(angle / (2 * .pi)) * total
+        var acc = 0.0
+        for x in slices { acc += x.value; if target <= acc { return x } }
+        return slices.last
     }
 
     @ViewBuilder func row(_ x: Slice, total: Double) -> some View {
@@ -105,9 +120,7 @@ struct SpendingBreakdownCard: View {
         }
         .font(.subheadline)
         .contentShape(.rect)
-        Button {
-            if group == nil { withAnimation(.snappy) { group = x.name } } else { openCategory(x.name) }
-        } label: { content }
+        Button { tapped(x) } label: { content }
         .buttonStyle(.plain)
     }
 }

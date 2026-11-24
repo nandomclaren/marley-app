@@ -9,6 +9,7 @@ struct ContasView: View {
     @State private var clearing: Txn?
     @State private var deleting: Txn?
     @State private var reconciling = false
+    @State private var showUpcoming = false
 
     var body: some View {
         let today = store.today
@@ -29,7 +30,14 @@ struct ContasView: View {
                 }
                 .listRowBackground(Color.clear).listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
                 if !future.isEmpty {
-                    Section("Próximos") { ForEach(Array(future)) { r in row(r) } }
+                    Section {
+                        DisclosureGroup(isExpanded: $showUpcoming) {
+                            ForEach(Array(future)) { r in row(r) }
+                        } label: {
+                            Label("Próximos — \(future.count) agendado\(future.count == 1 ? "" : "s")", systemImage: "calendar.badge.clock")
+                                .font(.subheadline.weight(.semibold))
+                        }
+                    }
                 }
                 Section(hideCleared ? "Uncleared" : "Transações") {
                     ForEach(Array(past)) { r in row(r) }
@@ -68,11 +76,11 @@ struct ContasView: View {
                     }.tint(.moneyIn)
                 }
             }
-            .swipeActions(edge: .trailing) { Button(role: .destructive) { deleting = r.txn } label: { Label("Apagar", systemImage: "trash") } }
+            .swipeActions(edge: .trailing) { Button { deleting = r.txn } label: { Label("Apagar", systemImage: "trash") }.tint(.red) // sem role destrutivo: só apaga depois da confirmação }
     }
 }
 
-/// Reconciliation, same steps as the web: confirm the cleared balance, or enter the bank's and add a correction.
+/// Reconciliação, mesmos passos do web: confirma o saldo cleared, ou informa o do banco e cria uma correção.
 struct ReconcileSheet: View {
     @Environment(AppStore.self) private var store
     @Environment(\.dismiss) private var dismiss
@@ -85,50 +93,66 @@ struct ReconcileSheet: View {
     var body: some View {
         let cleared = Ledger.clearedBalance(store.data, acct, today: store.today)
         NavigationStack {
-            VStack(spacing: 20) {
+            Form {
                 switch step {
                 case 1:
-                    Text("Saldo cleared da \(acct)").font(.headline).foregroundStyle(.secondary)
-                    Text(Money.eur(cleared)).font(.system(size: 40, weight: .bold).monospacedDigit())
-                    Text("Bate com o saldo do banco agora?").foregroundStyle(.secondary)
-                    HStack(spacing: 12) {
-                        Button("Não") { step = 2 }.buttonStyle(.glass).controlSize(.large)
+                    Section {
+                        LabeledContent("Saldo cleared", value: Money.eur(cleared)).font(.title3.weight(.semibold))
+                    } footer: { Text("Bate com o saldo da \(acct) no banco agora?") }
+                    Section {
                         Button("Sim, bate") {
                             store.reconcileConfirmed(acct)
                             resultText = "Saldo confirmado: \(Money.eur(cleared)). As transações cleared agora estão reconciliadas 🔒."
                             step = 3
-                        }.buttonStyle(.glassProminent).controlSize(.large)
+                        }
+                        Button("Não, o banco mostra outro valor") { step = 2 }
                     }
                 case 2:
-                    Text("Qual é o saldo no banco?").font(.headline)
-                    AmountField(placeholder: "0,00", text: $bankText, allowNegative: true,
-                                font: .system(size: 34, weight: .bold), alignment: .center, autoActivate: true)
-                    if let v = parseAmount(bankText) {
-                        let diff = v - cleared
-                        Text(abs(diff) < 0.005 ? "Sem diferença." : "Vai criar uma correção de \(Money.eur(diff, signed: true)).").foregroundStyle(.secondary)
+                    Section {
+                        LabeledContent("Saldo cleared no Marley", value: Money.eur(cleared))
+                        HStack {
+                            Text("Saldo no banco")
+                            Spacer()
+                            AmountField(placeholder: "0,00", text: $bankText, allowNegative: true, font: .title3.weight(.semibold),
+                                        alignment: .trailing, autoActivate: true)
+                                .frame(maxWidth: 180)
+                        }
+                    } footer: {
+                        if let v = parseAmount(bankText) {
+                            let diff = v - cleared
+                            Text(abs(diff) < 0.005 ? "Sem diferença." : "Vai criar uma transação de correção de \(Money.eur(diff, signed: true)).")
+                        }
                     }
-                    Button("Reconciliar") {
-                        guard let v = parseAmount(bankText) else { return }
-                        let diff = v - cleared
-                        store.reconcile(acct, bankBalance: v)
-                        resultText = abs(diff) < 0.005 ? "Reconciliado." : "Correção de \(Money.eur(diff, signed: true)) adicionada. Conta reconciliada 🔒."
-                        step = 3
+                    Section {
+                        Button("Reconciliar") {
+                            guard let v = parseAmount(bankText) else { return }
+                            let diff = v - cleared
+                            store.reconcile(acct, bankBalance: v)
+                            resultText = abs(diff) < 0.005 ? "Conta reconciliada 🔒." : "Correção de \(Money.eur(diff, signed: true)) adicionada. Conta reconciliada 🔒."
+                            step = 3
+                        }
+                        .disabled(parseAmount(bankText) == nil)
                     }
-                    .buttonStyle(.glassProminent).controlSize(.large).disabled(parseAmount(bankText) == nil)
                 default:
-                    Text("✨🎊✨").font(.largeTitle)
-                    Text(resultText).multilineTextAlignment(.center)
-                    Button("Fechar") { onDone(); dismiss() }.buttonStyle(.glassProminent).controlSize(.large)
+                    Section {
+                        VStack(spacing: 10) {
+                            Text("✨🎊✨").font(.largeTitle)
+                            Text(resultText).multilineTextAlignment(.center)
+                        }
+                        .frame(maxWidth: .infinity).padding(.vertical, 8)
+                    }
                 }
             }
-            .padding(24)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
             .keypadHost()
             .keyboardDismissable()
             .navigationTitle("Reconciliar \(acct)")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .cancellationAction) { if step < 3 { Button("Cancelar") { dismiss() } } } }
+            .toolbar {
+                ToolbarItem(placement: step < 3 ? .cancellationAction : .confirmationAction) {
+                    Button(step < 3 ? "Cancelar" : "Fechar") { if step == 3 { onDone() }; dismiss() }
+                }
+            }
         }
-        .presentationDetents([.medium, .large])
+        .presentationDetents([.large])
     }
 }

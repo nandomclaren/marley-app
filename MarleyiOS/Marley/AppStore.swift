@@ -6,6 +6,15 @@ enum SyncStatus: Equatable {
     case unconfigured, idle, syncing, synced, error(String), blocked([String])
 }
 
+struct CategoryImpact: Identifiable, Equatable {
+    let id = UUID()
+    let cat: String
+    let before: Double
+    let after: Double
+    let beforeFunded: Double
+    let afterFunded: Double
+}
+
 struct PendingQuestion: Identifiable {
     let id = UUID()
     let title: String
@@ -26,6 +35,7 @@ final class AppStore {
     var selectedMonth: String
     var syncStatus: SyncStatus = .idle
     var pendingQuestion: PendingQuestion?
+    var impact: CategoryImpact?
     var showSettings = false
     var launchedOnce = false
 
@@ -142,8 +152,26 @@ final class AppStore {
     /// (An empty first-launch document is never touched, so it can't look "newer" than the real data.)
     private var canTouchData: Bool { isConfigured ? syncState.hasSyncedThisSession : hasData }
 
+    /// Disponível de uma categoria num mês (com o saldo carregado), e quanto foi colocado nela.
+    private func availability(_ cat: String, _ month: String) -> (available: Double, funded: Double)? {
+        guard !cat.isEmpty, let l = Ledger.categoryLines(data, month: month).first(where: { $0.cat == cat }) else { return nil }
+        return (l.available, l.carry + l.budgeted)
+    }
+    /// Roda uma edição vinda do editor e, se ela mexeu no disponível da categoria, mostra a pílula.
+    private func withImpact(cat: String, month: String, _ change: () -> Void) {
+        let before = availability(cat, month)
+        change()
+        guard let before, let after = availability(cat, month), abs(after.available - before.available) > 0.005 else { return }
+        impact = CategoryImpact(cat: cat, before: before.available, after: after.available, beforeFunded: before.funded, afterFunded: after.funded)
+    }
+
     func addTransaction(date: String, desc: String, acct: String, amount: Double, isIncome: Bool, cat: String, notes: String,
                         recurring: Bool, uncertain: Bool, installments: Int) {
+        withImpact(cat: cat, month: String(date.prefix(7))) { addTransactionNow(date: date, desc: desc, acct: acct, amount: amount, isIncome: isIncome,
+                                                                             cat: cat, notes: notes, recurring: recurring, uncertain: uncertain, installments: installments) }
+    }
+    private func addTransactionNow(date: String, desc: String, acct: String, amount: Double, isIncome: Bool, cat: String, notes: String,
+                                   recurring: Bool, uncertain: Bool, installments: Int) {
         edit { d in
             if installments > 1 {
                 Installments.add(&d, total: amount, count: installments, date: date, desc: desc, acct: acct, isIncome: isIncome, cat: cat, notes: notes, uncertain: uncertain)
@@ -156,7 +184,10 @@ final class AppStore {
     func delete(_ ids: Set<Int>) { edit { Ledger.delete(&$0, ids: ids) } }
     /// Edição com escopo para recorrentes (só esta / esta e as futuras / todas).
     func updateTransaction(_ original: Txn, with e: TxnEdit, scope: RecurringScope) {
-        edit { Recurring.applyEdit(&$0, original: original, edit: e, scope: scope) }
+        // como no web: a categoria nova (ou a antiga, se ficou sem), no mês da transação
+        withImpact(cat: e.cat.isEmpty ? original.cat : e.cat, month: String(e.date.prefix(7))) {
+            edit { Recurring.applyEdit(&$0, original: original, edit: e, scope: scope) }
+        }
     }
     func deleteRecurring(_ t: Txn, scope: RecurringScope) { edit { Recurring.delete(&$0, t, scope: scope) } }
     /// toggleCleared(): returns false when the transaction is in the future and needs a date first.

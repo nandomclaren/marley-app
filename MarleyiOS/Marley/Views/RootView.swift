@@ -14,6 +14,13 @@ struct RootView: View {
             Tab("IA", systemImage: "bubble.left.and.text.bubble.right") { AIView() }
         }
         .tabBarMinimizeBehavior(.onScrollDown)
+        .overlay(alignment: .bottom) {
+            if let impact = store.impact {
+                CategoryImpactPill(impact: impact) { if store.impact?.id == impact.id { store.impact = nil } }
+                    .padding(.bottom, 70)
+                    .id(impact.id)
+            }
+        }
         .sheet(isPresented: $store.showSettings) { SettingsView() }
         .alert(store.pendingQuestion?.title ?? "", isPresented: Binding(get: { store.pendingQuestion != nil }, set: { _ in }), presenting: store.pendingQuestion) { q in
             Button(q.confirm, role: q.destructive ? .destructive : nil) { store.pendingQuestion = nil; q.resume(true) }
