@@ -89,11 +89,6 @@ struct FluxoView: View {
         }
     }
 
-    func dayTitle(_ d: String, today: String) -> String {
-        if d == today { return "Hoje" }
-        if let date = Day.date(d) { return date.formatted(.dateTime.weekday(.wide).day().month(.wide).locale(Locale(identifier: "pt_BR"))) }
-        return Day.short(d)
-    }
 }
 
 struct TxnRow: View {

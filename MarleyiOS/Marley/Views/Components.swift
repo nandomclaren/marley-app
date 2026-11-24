@@ -189,6 +189,13 @@ struct CategoryImpactPill: View {
     }
 }
 
+/// Título de um dia nas listas (Fluxo, Contas): "Hoje" ou "segunda-feira, 23 de novembro".
+func dayTitle(_ d: String, today: String) -> String {
+    if d == today { return "Hoje" }
+    if let date = Day.date(d) { return date.formatted(.dateTime.weekday(.wide).day().month(.wide).locale(Locale(identifier: "pt_BR"))) }
+    return Day.short(d)
+}
+
 /// Fecha o teclado (qualquer campo em foco).
 @MainActor func hideKeyboard() {
     UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)

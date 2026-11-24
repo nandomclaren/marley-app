@@ -17,6 +17,7 @@ struct ContasView: View {
         let rows = store.accountRows(acct, store.selectedMonth).filter { !hideCleared || (!$0.txn.cleared && !$0.txn.locked) }
         let future = rows.filter { $0.txn.date > today }.reversed()
         let past = rows.filter { $0.txn.date <= today }.reversed()
+        let days = Dictionary(grouping: past, by: { $0.txn.date })
         NavigationStack {
             List {
                 Section {
@@ -39,9 +40,12 @@ struct ContasView: View {
                         }
                     }
                 }
-                Section(hideCleared ? "Uncleared" : "Transações") {
-                    ForEach(Array(past)) { r in row(r) }
-                    if past.isEmpty { Text("Nada neste mês.").foregroundStyle(.secondary) }
+                // por dia, como no Fluxo
+                ForEach(days.keys.sorted(by: >), id: \.self) { day in
+                    Section(dayTitle(day, today: today)) { ForEach(days[day]!) { r in row(r) } }
+                }
+                if past.isEmpty {
+                    Section { Text(hideCleared ? "Nenhuma transação uncleared neste mês." : "Nada neste mês.").foregroundStyle(.secondary) }
                 }
             }
             .navigationTitle(acct)
