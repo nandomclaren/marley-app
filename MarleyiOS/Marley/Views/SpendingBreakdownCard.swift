@@ -74,12 +74,6 @@ struct SpendingBreakdownCard: View {
                     }
                 }
                 .frame(height: 220)
-                .overlay {
-                    VStack(spacing: 2) {
-                        Text(group == nil ? "Toque num grupo" : "Toque para ver detalhes")
-                            .font(.caption).foregroundStyle(.secondary)
-                    }
-                }
                 ForEach(s) { x in row(x, total: total) }
             } else {
                 Text(group == nil ? "Nenhum gasto neste mês." : "Nenhum gasto neste grupo.").foregroundStyle(.secondary)
