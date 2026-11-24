@@ -76,7 +76,8 @@ struct ContasView: View {
                     }.tint(.moneyIn)
                 }
             }
-            .swipeActions(edge: .trailing) { Button { deleting = r.txn } label: { Label("Apagar", systemImage: "trash") }.tint(.red) // sem role destrutivo: só apaga depois da confirmação }
+            // sem role destrutivo: só apaga depois da confirmação
+            .swipeActions(edge: .trailing) { Button { deleting = r.txn } label: { Label("Apagar", systemImage: "trash") }.tint(.red) }
     }
 }
 
