@@ -15,7 +15,9 @@ struct MarleyApp: App {
         }
         .onChange(of: scenePhase) { _, phase in
             switch phase {
-            case .active: if store.launchedOnce { Task { await store.syncNow() } }
+            case .active:
+                store.refreshDay()
+                if store.launchedOnce { Task { await store.syncNow() } }
             case .background: store.flushPendingPush()
             default: break
             }

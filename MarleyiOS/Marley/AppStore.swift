@@ -64,7 +64,20 @@ final class AppStore {
         }
     }
 
-    var today: String { Day.today() }
+    /// O dia de hoje como dado observado: quando muda (app reaberto noutro dia, meia-noite, fuso), as telas se redesenham.
+    /// Antes era calculado na hora, e as telas ficavam "presas" no dia em que foram desenhadas.
+    private(set) var today: String = Day.today()
+
+    /// Chamado ao voltar para o app e quando o iOS avisa que o dia ou a hora mudaram.
+    func refreshDay() {
+        let now = Day.today()
+        guard now != today else { return }
+        let oldMonth = String(today.prefix(7)), newMonth = String(now.prefix(7))
+        today = now
+        // virou o mês e você estava no mês corrente: acompanha o mês novo
+        if oldMonth != newMonth && selectedMonth == oldMonth && data.months.contains(newMonth) { selectedMonth = newMonth }
+        runMonthMaintenance()
+    }
     var hasData: Bool { !data.txns.isEmpty }
 
     // MARK: Settings

@@ -1,4 +1,6 @@
 import SwiftUI
+import Combine
+import UIKit
 import MarleyCore
 
 struct RootView: View {
@@ -14,6 +16,9 @@ struct RootView: View {
             Tab("IA", systemImage: "bubble.left.and.text.bubble.right") { AIView() }
         }
         .tabBarMinimizeBehavior(.onScrollDown)
+        // meia-noite com o app aberto, ou mudança de data/fuso no iPhone
+        .onReceive(NotificationCenter.default.publisher(for: .NSCalendarDayChanged).receive(on: RunLoop.main)) { _ in store.refreshDay() }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.significantTimeChangeNotification)) { _ in store.refreshDay() }
         .overlay(alignment: .bottom) {
             if let impact = store.impact {
                 CategoryImpactPill(impact: impact) { if store.impact?.id == impact.id { store.impact = nil } }
