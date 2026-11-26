@@ -178,8 +178,17 @@ final class AppStore {
         impact = CategoryImpact(cat: cat, before: before.available, after: after.available, beforeFunded: before.funded, afterFunded: after.funded)
     }
 
+    /// "Data que gruda": ao lançar várias compras de outro dia seguidas, a próxima transação nova abre nesse dia.
+    @ObservationIgnored private var lastNewDate: (day: String, savedAt: Date)?
+    static let stickyDateWindow: TimeInterval = 10 * 60
+    var stickyNewDate: Date? {
+        guard let l = lastNewDate, Date().timeIntervalSince(l.savedAt) < Self.stickyDateWindow, l.day != today else { return nil }
+        return Day.date(l.day)
+    }
+
     func addTransaction(date: String, desc: String, acct: String, amount: Double, isIncome: Bool, cat: String, notes: String,
                         recurring: Bool, uncertain: Bool, installments: Int) {
+        lastNewDate = (date, Date())
         withImpact(cat: cat, month: String(date.prefix(7))) { addTransactionNow(date: date, desc: desc, acct: acct, amount: amount, isIncome: isIncome,
                                                                              cat: cat, notes: notes, recurring: recurring, uncertain: uncertain, installments: installments) }
     }

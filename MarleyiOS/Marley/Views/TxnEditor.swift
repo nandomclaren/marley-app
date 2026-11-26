@@ -77,6 +77,20 @@ struct TxnEditor: View {
                                     font: .title2.weight(.semibold))
                     }
                     DatePicker("Data", selection: $date, displayedComponents: .date)
+                    // atalhos de um toque para os dias mais comuns; o calendário acima fica para o resto
+                    HStack(spacing: 8) {
+                        ForEach(quickDays, id: \.label) { q in
+                            let selected = Day.string(date) == Day.string(q.date)
+                            Button { date = q.date } label: {
+                                Text(q.label).font(.subheadline.weight(selected ? .semibold : .regular))
+                                    .foregroundStyle(selected ? Color.white : Color.primary)
+                                    .padding(.horizontal, 14).padding(.vertical, 7)
+                                    .background(selected ? Color.marleyAccent : Color(.tertiarySystemFill), in: .capsule)
+                            }
+                            .buttonStyle(.borderless)
+                        }
+                        Spacer(minLength: 0)
+                    }
                     Picker("Conta", selection: $acct) { ForEach(Accounts.all, id: \.self) { Text($0).tag($0) } }
                         .pickerStyle(.segmented)
                 }
@@ -136,6 +150,14 @@ struct TxnEditor: View {
         }
     }
 
+    /// Hoje, ontem e anteontem, a partir do "hoje" do app.
+    var quickDays: [(label: String, date: Date)] {
+        let base = Day.date(store.today) ?? Date()
+        return [("Hoje", 0), ("Ontem", -1), ("Anteontem", -2)].map { item in
+            (item.0, Calendar.current.date(byAdding: .day, value: item.1, to: base) ?? base)
+        }
+    }
+
     var installmentHint: String? {
         guard installments > 1 else { return nil }
         guard let a = amount else { return "\(installments) parcelas mensais; a 1ª cai no mês da compra." }
@@ -166,6 +188,8 @@ struct TxnEditor: View {
             recurring = t.recurring || t.style == "fixed"; uncertain = t.isUncertain; cat = t.cat; notes = t.notes; catTouched = true
         } else {
             if case .new(let a?) = target { acct = a }
+            // lançando várias de outro dia em sequência: abre no mesmo dia da anterior (por 10 minutos)
+            if let sticky = store.stickyNewDate { date = sticky }
             // começa pela descrição (como no web); o valor abre a calculadora ao ser tocado
             Task { try? await Task.sleep(for: .milliseconds(450)); focus = .desc }
         }
