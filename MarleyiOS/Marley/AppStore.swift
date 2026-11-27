@@ -228,8 +228,23 @@ final class AppStore {
 
     // MARK: Sync
 
-    func syncNow() async {
-        guard !syncing else { return }
+    /// Fila das operações de sincronização: uma de cada vez, na ordem, sempre lendo o estado mais recente.
+    /// (Rodar o envio automático e a sincronização de "voltei ao app" ao mesmo tempo, cada um com uma cópia velha
+    /// do estado, fazia o iPhone ver o próprio envio como "mudança de outro aparelho" e mostrar o alerta de conflito.)
+    @ObservationIgnored private var syncChain: Task<Void, Never>?
+    private func serialized(_ op: @escaping @MainActor () async -> Void) async {
+        let previous = syncChain
+        let task = Task { @MainActor in
+            await previous?.value
+            await op()
+        }
+        syncChain = task
+        await task.value
+    }
+
+    func syncNow() async { await serialized { await self.performSync() } }
+
+    private func performSync() async {
         guard let transport else { syncStatus = .unconfigured; runMonthMaintenance(); return }
         syncing = true
         defer { syncing = false }
@@ -260,6 +275,9 @@ final class AppStore {
             if !data.months.contains(selectedMonth) { selectedMonth = data.months.last ?? selectedMonth }
             runMonthMaintenance()
         } catch {
+            // guarda o que foi aprendido (ex.: a impressão digital de um envio cuja resposta se perdeu)
+            syncState = st
+            local.saveState(st)
             syncStatus = .error((error as? LocalizedError)?.errorDescription ?? error.localizedDescription)
         }
     }
@@ -284,12 +302,14 @@ final class AppStore {
             await self?.autoPush()
         }
     }
-    private func autoPush() async {
-        guard let transport, !syncing else { return }
+    private func autoPush() async { await serialized { await self.performAutoPush() } }
+
+    private func performAutoPush() async {
+        guard let transport else { return }
         var st = syncState
         let o = await Sync.autoPush(local: data, state: &st, transport: transport)
-        syncState.lastSyncedTs = st.lastSyncedTs
-        local.saveState(syncState)
+        syncState = st
+        local.saveState(st)
         switch o {
         case .pushed: syncStatus = .synced
         case .upToDate: break
@@ -310,7 +330,9 @@ final class AppStore {
     }
 
     /// "Restaurar do Gist": replace this device's data with the server's (a snapshot is kept on the device).
-    func restoreFromGist() async {
+    func restoreFromGist() async { await serialized { await self.performRestoreFromGist() } }
+
+    private func performRestoreFromGist() async {
         guard let transport else { return }
         var st = syncState
         do {

@@ -192,9 +192,11 @@ final class MockGist: GistTransport, @unchecked Sendable {
     var content: String?
     var pushes: [String] = []
     var failFetch = false
+    /// O GitHub grava, mas a resposta não chega (internet instável).
+    var loseResponse = false
     init(_ d: AppData?) { content = d?.serialized() }
     func fetch() async throws -> String? { if failFetch { throw SyncError.badResponse }; return content }
-    func push(_ c: String) async throws { pushes.append(c); content = c }
+    func push(_ c: String) async throws { pushes.append(c); content = c; if loseResponse { throw SyncError.badResponse } }
 }
 
 final class SyncTests: XCTestCase {
@@ -248,6 +250,40 @@ final class SyncTests: XCTestCase {
         let r = try await Sync.full(local: data(n: 3, ts: 10), state: &st, transport: g) { _ in false }
         XCTAssertEqual(r.outcome, .pushed)
     }
+    // O alerta de conflito aparecia sem nenhum outro aparelho: o servidor tinha uma versão que o próprio iPhone enviou.
+    func testOwnPushWithLostResponseIsNotAConflict() async throws {
+        let g = MockGist(data(n: 20, ts: 1000)); var st = SyncState(lastSyncedTs: 1000); st.hasSyncedThisSession = true
+        g.loseResponse = true
+        do { _ = try await Sync.full(local: data(n: 21, ts: 2000), state: &st, transport: g) { _ in false }; XCTFail("should throw") } catch {}
+        XCTAssertEqual(st.lastSyncedTs, 1000)      // o app acha que não enviou…
+        g.loseResponse = false
+        // …e o usuário editou de novo antes da próxima sincronização
+        let r = try await Sync.full(local: data(n: 22, ts: 3000), state: &st, transport: g) { q in XCTFail("no conflict expected, got \(q)"); return false }
+        XCTAssertEqual(r.outcome, .pushed)
+        XCTAssertEqual(try AppData.parse(g.content!).txns.count, 22)
+        XCTAssertEqual(st.lastSyncedTs, 3000)
+    }
+    func testAutoPushAcceptsItsOwnUnrecordedPush() async {
+        let g = MockGist(data(n: 20, ts: 1000)); var st = SyncState(lastSyncedTs: 1000); st.hasSyncedThisSession = true
+        g.loseResponse = true
+        _ = await Sync.autoPush(local: data(n: 21, ts: 2000), state: &st, transport: g)
+        g.loseResponse = false
+        let o = await Sync.autoPush(local: data(n: 22, ts: 3000), state: &st, transport: g)
+        XCTAssertEqual(o, .pushed)
+        XCTAssertEqual(st.lastSyncedTs, 3000)
+    }
+    func testRealConflictStillAsks() async throws {
+        let g = MockGist(data(n: 20, ts: 1000)); var st = SyncState(lastSyncedTs: 1000)
+        g.content = data(n: 25, ts: 2500).serialized()  // escrito por outro aparelho (versão desconhecida aqui)
+        var asked = false
+        _ = try await Sync.full(local: data(n: 21, ts: 2000), state: &st, transport: g) { _ in asked = true; return false }
+        XCTAssertTrue(asked)
+    }
+    func testSyncStateDecodesOldFileWithoutHashes() throws {
+        let st = try JSONDecoder().decode(SyncState.self, from: Data(#"{"lastSyncedTs":42}"#.utf8))
+        XCTAssertEqual(st.lastSyncedTs, 42); XCTAssertEqual(st.knownHashes, [])
+    }
+
     func testAutoPushRules() async {
         let g = MockGist(data(n: 20, ts: 1000))
         var st = SyncState(lastSyncedTs: 1000)

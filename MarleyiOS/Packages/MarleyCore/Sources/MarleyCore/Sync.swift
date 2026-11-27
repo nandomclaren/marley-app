@@ -32,12 +32,34 @@ public enum SyncOutcome: Equatable, Sendable {
 /// Sync bookkeeping. `lastSyncedTs` is persisted so a conflict is detected even across app launches.
 public struct SyncState: Codable, Equatable, Sendable {
     public var lastSyncedTs: Double
+    /// Impressões digitais das versões que ESTE aparelho enviou ou adotou (as mais recentes no fim).
+    /// Se o servidor tem uma delas, a mudança veio daqui (por exemplo, um envio cuja resposta se perdeu), não de outro aparelho.
+    public var knownHashes: [String] = []
     public var hasSyncedThisSession: Bool = false
     public init(lastSyncedTs: Double) { self.lastSyncedTs = lastSyncedTs }
-    enum CodingKeys: String, CodingKey { case lastSyncedTs }
+    enum CodingKeys: String, CodingKey { case lastSyncedTs, knownHashes }
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        lastSyncedTs = try c.decode(Double.self, forKey: .lastSyncedTs)
+        knownHashes = try c.decodeIfPresent([String].self, forKey: .knownHashes) ?? []
+    }
+    public mutating func remember(_ d: AppData) {
+        let h = Sync.fingerprint(d)
+        knownHashes.removeAll { $0 == h }
+        knownHashes.append(h)
+        if knownHashes.count > 10 { knownHashes.removeFirst(knownHashes.count - 10) }
+    }
+    public func isOurs(_ d: AppData) -> Bool { knownHashes.contains(Sync.fingerprint(d)) }
 }
 
 public enum Sync {
+    /// Impressão digital estável do conteúdo (FNV-1a 64 bits sobre o JSON serializado, que é determinístico).
+    public static func fingerprint(_ d: AppData) -> String {
+        var h: UInt64 = 0xcbf29ce484222325
+        for b in d.serialized().utf8 { h ^= UInt64(b); h = h &* 0x100000001b3 }
+        return String(h, radix: 16)
+    }
+
     public struct Result: Sendable {
         public let outcome: SyncOutcome
         /// New local data when it changed (adopted from the server, or re-stamped to win a conflict).
@@ -54,8 +76,11 @@ public enum Sync {
         var toPush = local
         if let remote {
             let localTs = local.lastModified, remoteTs = remote.lastModified
+            // o servidor tem uma versão que este aparelho mesmo produziu: não é mudança de outro aparelho
+            let remoteIsOurs = state.isOurs(remote)
+            if remoteIsOurs && remoteTs > state.lastSyncedTs { state.lastSyncedTs = remoteTs }
             let localChanged = localTs > state.lastSyncedTs
-            let remoteChanged = remoteTs > state.lastSyncedTs
+            let remoteChanged = remoteTs > state.lastSyncedTs && !remoteIsOurs
             if remoteTs == localTs {
                 state.lastSyncedTs = localTs
                 state.hasSyncedThisSession = true
@@ -75,6 +100,7 @@ public enum Sync {
         if !issues.isEmpty, !(await ask(.pushLooksLikeDataLoss(issues))) {
             return Result(outcome: .blocked(issues), data: toPush == local ? nil : toPush)
         }
+        state.remember(toPush) // antes de enviar: se a resposta se perder, a versão continua reconhecida como nossa
         try await transport.push(toPush.serialized())
         state.lastSyncedTs = toPush.lastModified
         state.hasSyncedThisSession = true
@@ -88,6 +114,7 @@ public enum Sync {
         }
         var d = remote
         Ledger.resetFutureLocks(&d, today: Day.today())
+        state.remember(remote)
         state.lastSyncedTs = remote.lastModified
         state.hasSyncedThisSession = true
         return Result(outcome: .pulled, data: d)
@@ -100,10 +127,13 @@ public enum Sync {
         do { remote = try await transport.fetch().flatMap { try? AppData.parse($0) } }
         catch { return .aborted("Sem conexão com o GitHub: \(error.localizedDescription)") }
         if let remote, remote.lastModified > state.lastSyncedTs {
-            return .aborted("Outro aparelho alterou os dados. Toque em sincronizar para resolver.")
+            guard state.isOurs(remote) else { return .aborted("Outro aparelho alterou os dados. Toque em sincronizar para resolver.") }
+            state.lastSyncedTs = remote.lastModified // um envio nosso anterior que não ficou registrado
+            guard local.lastModified > state.lastSyncedTs else { return .upToDate }
         }
         let issues = SyncGuards.pushIssues(local: local, remote: remote)
         if !issues.isEmpty { return .blocked(issues) }
+        state.remember(local)
         do { try await transport.push(local.serialized()) }
         catch { return .aborted("Falha ao enviar: \(error.localizedDescription)") }
         state.lastSyncedTs = local.lastModified
@@ -114,6 +144,7 @@ public enum Sync {
     public static func forcePull(state: inout SyncState, transport: GistTransport) async throws -> AppData {
         guard let content = try await transport.fetch() else { throw SyncError.noRemoteFile }
         var d = try AppData.parse(content)
+        state.remember(d)
         Ledger.resetFutureLocks(&d, today: Day.today())
         state.lastSyncedTs = d.lastModified
         state.hasSyncedThisSession = true
